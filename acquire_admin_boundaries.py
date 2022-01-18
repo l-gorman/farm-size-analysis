@@ -1,3 +1,9 @@
+# !/usr/bin/python
+
+# A script for requesting all of the 
+# geoboundaries for countries based on 
+# 3 letter ISO country code
+
 from farmsize import mapping
 from os.path import exists
 

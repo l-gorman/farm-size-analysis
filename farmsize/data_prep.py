@@ -2,6 +2,7 @@
 Series of functions for loading and extracting the necessary data
 '''
 import pandas as pd
+import json
 
 def subset_data(data, complete_gps, countries):
     """Load and subset RHoMIS data
@@ -21,4 +22,10 @@ def subset_data(data, complete_gps, countries):
         subset = subset & \
                 data["ID_COUNTRY"].isin(countries)
     
-    return data.loc[subset,:] 
+    return data.loc[subset,:]
+
+def load_json(path):
+    with open("./data/country_mappings.json","r") as read_file:
+        country_mappings = json.load(read_file)
+    return pd.DataFrame(country_mappings)
+
