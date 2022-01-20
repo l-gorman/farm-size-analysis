@@ -35,4 +35,4 @@ for index in range(0,len(data_sets)):
         ipums_terra_data = ipums_terra_data.append(new_data_set)
     
 
-ipums_terra_data.to_csv("./data/ipums/processed/ipums_terra_merged.csv")
+ipums_terra_data.to_csv("./data/ipums/processed/ipums_terra_merged.csv", index=False)

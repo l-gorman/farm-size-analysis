@@ -85,7 +85,7 @@ def get_admin_boundaries_africa(admin_level):
     return combined_df
 
 
-def read_admin_boundaries_file(path):
+def read_geo_csv(path):
     data = pd.read_csv(path)
     data['geometry'] = gpd.GeoSeries.from_wkt(data['geometry'])
     data = gpd.GeoDataFrame(data, crs="epsg:4326").set_geometry('geometry')
