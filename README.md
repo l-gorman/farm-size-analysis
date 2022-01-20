@@ -12,3 +12,4 @@ An initial project for exploring a farm-size analysis in python
 * World map and geographical information from IPUMS [found here](https://international.ipums.org/international/gis.shtml)
 * Spatially harmonized level 2 geography dataset from IPUMS [found here](https://international.ipums.org/international/gis_harmonized_1st.shtml)
 * Spatially harmonized level 2 geography dataset from IPUMS [found here](https://international.ipums.org/international/gis_harmonized_2nd.shtml)
+* Use [this program](https://codap.concord.org/app/static/dg/en/cert/index.html#) for opening codap files
