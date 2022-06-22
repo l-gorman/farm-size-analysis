@@ -1,5 +1,6 @@
-farm_size_analysis_env/
+venv/
 data/
 copy_data.sh
 farmsize/__pycache__/
 notes/
+renv/

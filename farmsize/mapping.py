@@ -7,6 +7,7 @@ from requests.adapters import HTTPAdapter
 
 from shapely.geometry import shape
 
+
 def get_country_admin_boundaries(iso_a_3, admin_level):
     """Get country administrative boundaries
     from the GeoBoundaries database:
@@ -22,21 +23,27 @@ def get_country_admin_boundaries(iso_a_3, admin_level):
     # Allowing Retries
     s = requests.Session()
     retries = Retry(total=5,
-                backoff_factor=0.1,
-                status_forcelist=[ 500, 502, 503, 504 ])
+                    backoff_factor=0.1,
+                    status_forcelist=[500, 502, 503, 504])
     s.mount('http://', HTTPAdapter(max_retries=retries))
 
     # See documentation on GeoBoundaries API
-    url = "https://www.geoboundaries.org/gbRequest.html?ISO="+iso_a_3+"&ADM=ADM"+admin_level
+    url = "https://www.geoboundaries.org/gbRequest.html?ISO=" + \
+        iso_a_3+"&ADM=ADM"+admin_level
     r = s.get(url)
-    download_url  = r.json()[0]['gjDownloadURL']
+    download_url = r.json()[0]['gjDownloadURL']
     geoBoundary = s.get(download_url).json()
 
-    names = [feature["properties"]["shapeISO"] for feature in geoBoundary["features"] ]
-    shapeISO = [feature["properties"]["shapeName"] for feature in geoBoundary["features"] ]
-    shapeID = [feature["properties"]["shapeID"] for feature in geoBoundary["features"] ]
-    shapeType = [feature["properties"]["shapeType"] for feature in geoBoundary["features"] ]
-    geometry = [shape(feature["geometry"]) for feature in geoBoundary["features"] ]
+    names = [feature["properties"]["shapeISO"]
+             for feature in geoBoundary["features"]]
+    shapeISO = [feature["properties"]["shapeName"]
+                for feature in geoBoundary["features"]]
+    shapeID = [feature["properties"]["shapeID"]
+               for feature in geoBoundary["features"]]
+    shapeType = [feature["properties"]["shapeType"]
+                 for feature in geoBoundary["features"]]
+    geometry = [shape(feature["geometry"])
+                for feature in geoBoundary["features"]]
 
     geo_data_frame = gpd.GeoDataFrame(data={
         "iso_a3": iso_a_3,
@@ -49,8 +56,8 @@ def get_country_admin_boundaries(iso_a_3, admin_level):
 
     return geo_data_frame
 
-def get_admin_boundaries_multiple_countries(countries, admin_level):
 
+def get_admin_boundaries_multiple_countries(countries, admin_level):
     """Get administrative boundaries
     Returns:
         [type]: [description]
@@ -67,21 +74,23 @@ def get_admin_boundaries_multiple_countries(countries, admin_level):
 
     list_of_dfs = []
     for country in countries:
-            print(f"Fetching data for {country}")
-            list_of_dfs.append(get_country_admin_boundaries(country, admin_level))
-    combined_dfs = gpd.GeoDataFrame(pd.concat(list_of_dfs,ignore_index=True))
+        print(f"Fetching data for {country}")
+        list_of_dfs.append(get_country_admin_boundaries(country, admin_level))
+    combined_dfs = gpd.GeoDataFrame(pd.concat(list_of_dfs, ignore_index=True))
 
     return combined_dfs
 
+
 def get_admin_boundaries_africa(admin_level):
     countries = ['TZA', 'COD', 'SOM', 'KEN', 'SDN', 'TCD', 'ZAF', 'LSO',
-       'ZWE', 'BWA', 'NAM', 'SEN', 'MLI', 'MRT', 'BEN', 'NER', 'NGA',
-       'CMR', 'TGO', 'GHA', 'CIV', 'GIN', 'GNB', 'LBR', 'SLE', 'BFA',
-       'CAF', 'COG', 'GAB', 'GNQ', 'ZMB', 'MWI', 'MOZ', 'SWZ', 'AGO',
-       'BDI', 'MDG', 'GMB', 'TUN', 'DZA', 'ERI', 'MAR', 'EGY', 'LBY',
-       'ETH', 'DJI', 'UGA', 'RWA', 'SSD']
-    
-    combined_df = get_admin_boundaries_multiple_countries(countries, admin_level)
+                 'ZWE', 'BWA', 'NAM', 'SEN', 'MLI', 'MRT', 'BEN', 'NER', 'NGA',
+                 'CMR', 'TGO', 'GHA', 'CIV', 'GIN', 'GNB', 'LBR', 'SLE', 'BFA',
+                 'CAF', 'COG', 'GAB', 'GNQ', 'ZMB', 'MWI', 'MOZ', 'SWZ', 'AGO',
+                 'BDI', 'MDG', 'GMB', 'TUN', 'DZA', 'ERI', 'MAR', 'EGY', 'LBY',
+                 'ETH', 'DJI', 'UGA', 'RWA', 'SSD']
+
+    combined_df = get_admin_boundaries_multiple_countries(
+        countries, admin_level)
     return combined_df
 
 
