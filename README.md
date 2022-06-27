@@ -8,7 +8,6 @@ An initial project for exploring potential for a farm size analysis.
 
 
 
-
 # Useful Reading
 
 * A good [tutorial](https://anbasile.github.io/posts/2017-06-25-jupyter-venv/) for reproducible jupyter environments and project structure.
@@ -22,6 +21,7 @@ An initial project for exploring potential for a farm size analysis.
 # Useful tips
 
 * [Using jupyter with venv](https://anbasile.github.io/posts/2017-06-25-jupyter-venv/)
+* On the markdown presentation, press S to enter presenter view and see notes
 
 # Rspatial Issues
 

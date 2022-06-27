@@ -4,3 +4,4 @@ copy_data.sh
 farmsize/__pycache__/
 notes/
 renv/
+.Rproj.user
