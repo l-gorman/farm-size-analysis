@@ -1,5 +1,5 @@
 ---
-title: "RHoMIS Crows Nest: Farmer Heterogeneity Analysis"
+title: "Farmer Heterogeneity Analysis"
 output: 
   revealjs::revealjs_presentation:
     theme: black
@@ -11,7 +11,7 @@ output:
     reveal_options:
       menu:
         numbers: true
-date: "23/06/2022"
+date: "01/06/2022"
 ---
 ```{r setup, include=FALSE}
 
@@ -19,27 +19,18 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```
 
+# Why Is Heterogeneity Important? 
+
+<h3>TLDR</h3>
+
+* Different impacts for different locations
+* Targeting is more sought after
+* Maps being produced in the name of targeting
 
 
 
-# What is Heterogeneity
 
-
-![Rmarkown Header](images/presentation/systematic_review_heading.png){width=400px}
-![Rmarkown Header](images/presentation/syst_review_table.png){width=600px}
-<aside class="notes">
-
-* We are going to talk about heterogeneity
-* Qality of being diverse in characteristics
-* Not single characterist
-* systematic review looking at heterogeneity
-* In short, heterogeneity in smallholder farms can capture their diverse characteristics at the household level (demographics, farm practices...), as well as higher levels (their environment, their landscape, their county...)
-
-</aside>
-
-
-
-## Why do We Care? 
+## Why Is Heterogeneity Important? 
 
 <div class="container">
 
@@ -56,6 +47,7 @@ knitr::opts_chunk$set(echo = TRUE)
 </div>
 </div>
 
+
 <aside class="notes">
 
 * Why to we care about heterogeneity in AR4D
@@ -68,7 +60,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 </aside>
 
-## Why do We Care? 
+## Why is Heterogeneity Important
 
 <div class="container">
 
@@ -89,12 +81,13 @@ knitr::opts_chunk$set(echo = TRUE)
 <aside class="notes">
 
 * The Vanlauwe article focused on productivity interventions. 
-* A big thing in development is targetting the "poorest of the poor", or those most in need
+* A big thing in development is targeting the "poorest of the poor", or those most in need
 * While not explicitly stated, this is a question of capturing farmer heterogeneity.
 * We need to know, who is poor? where are they? What works best for them?
 * There is widespread acknowledgement that differentiation, targetting, and capturing heterogeneity are important
 
 </aside>
+
 
 ## Why do We Care? 
 
@@ -124,7 +117,20 @@ knitr::opts_chunk$set(echo = TRUE)
 
 </aside>
 
+## We Measure Heterogeneity in Different Ways
 
+
+![Rmarkown Header](images/presentation/systematic_review_heading.png){width=400px}
+![Rmarkown Header](images/presentation/syst_review_table.png){width=600px}
+<aside class="notes">
+
+* We are going to talk about heterogeneity
+* Quality of being diverse in characteristics
+* Not single characterist
+* systematic review looking at heterogeneity
+* In short, heterogeneity in smallholder farms can capture their diverse characteristics at the household level (demographics, farm practices...), as well as higher levels (their environment, their landscape, their county...)
+
+</aside>
 
 
 
@@ -194,6 +200,20 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Methods to Capture Heterogeneity
 
+<h3>TLDR</h3>
+
+Methods currently use often do not currently capture:
+
+* Spatial/Contextual drivers
+* Distribution of responses
+* Uncertainty
+
+<aside class="notes">
+
+* It was confirmed that this was the case during the systematic review
+
+
+</aside>
 
 ## Indirect Estimation 
 
@@ -419,47 +439,30 @@ multi-dimensional similarities</small>
 <div class="flex-container">
 
 <div class="col">
-<h5>What Works?</h5>
-<small>
-<ul>
-<li> Villages </li>
-<li> Subnational units </li>
-<li> Agro-ecological zones </li>
-</ul>
-</small>
-</div>
-
-<div class="col">
-
-<h5>For Who?</h5>
-
+<h5>Which farmers?</h5>
 <small>
 <ul>
 <li> Demographic groups </li>
 <li> Wealth quartiles </li>
-<li> Practices? </li>
+<li> Practices </li>
+</ul>
+</small>
+</div>
+
+<div class="col">
+<h5>Exist where?</h5>
+<small>
+<ul>
 <li> Villages </li>
 <li> Subnational units </li>
 <li> Agro-ecological zones </li>
 </ul>
 </small>
 </div>
-
-<div class="col">
-<h5>Why?</h5>
-
-<small>
-<ul>
-<li> Household demographics </li>
-<li> Practices </li>
-<li> Spatial drivers </li>
-</ul>
-</small>
-</div>
 </div>
 
-* Traditional mapping and heterogeneity efforts often *assume importance of particular variables*
-
+To understand this, in the context of the "poorest of the poor", we need to understand at which
+levels variablility is "most important"
 
 
 ## Issues with Current Methods
@@ -483,21 +486,27 @@ In each of the approaches there are assumptions about:
 **An exploration of multi-level heterogeneity**
 Some questions to consider:
 
-1. What are the household level drivers of heterogeneity
-2. What are the spatial drivers of heterogeneity
-3. Are these drivers the same for all farm types
+1. What is the distribution of characteristic X in sub national location Y?
+2. What are the household level drivers of heterogeneity?
+3. What are the spatial drivers of heterogeneity?
+4. Are these drivers the same for all farm types?
 
 Then... if we can demonstrate that there are strong
 spatial drivers, then we can attempt to "fill in the gaps"
 
 ## Data
+
+Data from 9 countries
+
+
 <div class="flex-container">
+
 
 <div class="col">
 <small>
 <ul>
 <li>Household level: RHoMIS (Farm practices, incomes, gender information)</li>
-<li>Spatial: Facebook and GEE (Climate information, population density, land cover...)</li>
+<li>Spatial (Pixel Level): MODIS derived (Climate information, land cover...)</li>
 <li>Sub-national: IPUMS (Education levels, asset ownership, electrification...)</li>
 </ul>
 </small>
@@ -509,8 +518,12 @@ spatial drivers, then we can attempt to "fill in the gaps"
 </div>
 </div>
 
+## Data 
 
-## Approach 1: Parametric Interperatable
+![Rmarkown Header](images/presentation/analysis-levels.drawio.png){width=500px}
+
+
+## Suggested Approach: Layering Methods
 
 <div class="flex-container">
 
@@ -532,22 +545,6 @@ Bayesian Methods
 </div>
 </div>
 
-## Approach 2: Black Box
-
-
-<div class="flex-container">
-
-<div class="col">
-
-E.g. Gaussian Processes
-
-
-![Rmarkown Header](images/presentation/gaussian_processes.png){width=300px}
-</div>
-</div>
-
-
-
 
 ## What about Project Bias
 
@@ -560,10 +557,14 @@ Bootstrapping!
 
 # Summary 
 
-* Mapping farmers could be important for targetting, but we know little
+* Mapping farmers could be important for targeting but we need to know what we are targetting
 * To map farmers we need to understand how characteristics vary across different scales
 * Only after we understand which types of heterogeneity dominate, can we begin to think about what what predictions we can make
-* Once we better understand these types of heterogeneity we can then make more informed decisions about "filling in the gaps"
+
+## Questions
+
+* For linear quantile mixed models, how do we differentiate between quantiles within and overall quantiles
+* Procedures for variable selection?
 
 
 
