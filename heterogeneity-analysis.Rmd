@@ -1,571 +1,412 @@
 ---
-title: "Farmer Heterogeneity Analysis"
-output: 
-  revealjs::revealjs_presentation:
-    theme: black
-    center: true
-    transition: slide
-    css: CSS/presentation_layout.css
-    self_contained: false
-    reveal_plugins: ["menu", "notes"]
-    reveal_options:
-      menu:
-        numbers: true
-date: "01/06/2022"
+title: "Land Size Distribution Analysis"
+output:
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
 ---
-```{r setup, include=FALSE}
 
-knitr::opts_chunk$set(echo = TRUE)
+## Primary Questions Are
+
+* Are there differences between locations in mean land size?
+* Is land-size important for determining food security or incomes?
+* How much does land size vary in one single location?
+* Does predicting the mean, or the median actually tell us anything?
+* Can we interactively plot the marginal distribution of land-size, given parameters in a given location?
+* If so, can we combine this with census data to answer the question: _based on the data we have, we think there are N farmers with farm-sizes under X ha, with confidence y_
+* How would we validate such a model?
+
+
+## Setup
+
+First lets load the packages that we will need: 
+
+```{r setup, warning=F, message=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+# Data Processing Packages
+library(jsonlite)
+library(readr)
+library(dplyr)
+library(tibble)
+library(rlang)
+
+# Spatial Packages
+library(sf)
+library(sp)
+library(stars)
+
+# Plotting Packages
+library(corrplot)
+library(ggplot2)
+
+# Statistical Analysis Pakcages
+library(FactoMineR) # Package for dimensionality reduction
+library(factoextra) # Package for dimensionality reduction
+library(brms) # Bayesian analysis package
+library(rstan) # R package for writing stan models
+library(lme4) # Linear, generalised linear, and nonlinear mixed models
+library(mgcv) # Package for GAMs
+library(lqmm) # Linear Quatile Mixed Models (Hierarchical Quantile)
+library(quantreg) # Quantile Regression
+library(bamlss) # Bayesian Additive Models for Location Scale and Shape
+
+library(PerformanceAnalytics)
+```
+
+Then lets load the data:
+
+```{r load_data}
+
+
+rhomis_df <- readr::read_csv("./data/prepared-data/rhomis-geo-data.csv")
+
+# Here we create a "geographic copy" of the dataset
+rhomis_geo_data <- sf::st_as_sf(x = rhomis_df, wkt = "geometry")
+rhomis_geo_data <- rhomis_geo_data[rhomis_geo_data$iso_3!="NER",]
+
+# IPUMS GEO2 level dataset
+ipums_df <- readr::read_csv("./data/prepared-data/ipums-all.csv")
+ipums_geo <- sf::st_as_sf(x = ipums_df, wkt = "geometry")
+ipums_geo <- ipums_geo[ipums_geo$iso_3!="NER",]
+
+
+# lsms_all <- readr::read_csv("./data/prepared-data/lsms-all.csv")
+
+# There are a lot of variables to examine in the dataset, 
+# in this file we have organised them into categories
+variable_categories <- jsonlite::read_json("./data/variable-categorisation.json")
+
+
+world_all <- readr::read_csv("./data/prepared-data/world-shapefile.csv")
+world_all <- sf::st_as_sf(x = world_all, wkt = "geometry")
+```
+So what are these datasets? `rhomis_df` is a set of RHoMIS
+indicators, with their GPS coordinates. These indicators 
+have been linked to subnational level (GEO2) IPUMS census 
+data. 
+
+
+# Computing Indicators
+
+There are many indicators in the RHoMIS dataset, however, we might want to
+compute some further indicators.
+
+All of the income units come in local currency units. I would like currencies to
+be internationally comparable, so I am going to change them to PPP$ (purchasing
+power parity).
+
+```{r PPP}
+
+income_columns_lcu <- c(
+  "crop_income_lcu_per_year",
+  "livestock_income_lcu_per_year",
+  "total_income_lcu_per_year",
+  "off_farm_income_lcu_per_year",
+  "value_crop_consumed_lcu_per_hh_per_year",
+  "value_livestock_products_consumed_lcu_per_hh_per_year",
+  "value_farm_products_consumed_lcu_per_hh_per_year"
+)
+income_columns_ppp <- gsub("lcu", "ppp", income_columns_lcu)
+rhomis_df[income_columns_ppp] <- rhomis_df[income_columns_lcu]/rhomis_df$currency_conversion_lcu_to_ppp
+
+# Population columns came in form of totals
+# Convert these into percentages for comparison
+# between locations
+
+population_columns_percentage <- paste0(
+  variable_categories$ipums$population_columns,
+  "_perc"
+)
+
+ipums_df[population_columns_percentage] <- 100*ipums_df[unlist(variable_categories$ipums$population_columns)]/ipums_df$TOTPOP_GEO2A
+
+rhomis_df[population_columns_percentage] <- 100*rhomis_df[unlist(variable_categories$ipums$population_columns)]/rhomis_df$TOTPOP_GEO2A
+
+
+# There are duplicate GEOID's by country, so need to create country specific IDs
+
+ipums_df$GEOID_country <- paste0(ipums_df$GEOID, "_" ,ipums_df$iso_2)
+rhomis_df$GEOID_country <- paste0(rhomis_df$GEOID, "_" ,rhomis_df$iso_2)
+
+
+# It can be useful, for exploration, to understand the 
+# different countries by region. 
+
+region_table <- tibble::as_tibble(
+  list(
+    "iso_2"=c("BF", 
+              "ET", 
+              "GH", 
+              "KE",
+              "ML",
+              "NG",
+              "RW",
+              "TZ",
+              "UG"),
+    "region_afr"=c("west_africa",
+                   "east_africa", 
+                   "west_africa", 
+                   "east_africa", 
+                   "west_africa",
+                   "west_africa",
+                   "central_africa",
+                   "east_africa",
+                   "east_africa"
+                   
+                  
+                   )
+  )
+)
+
+ipums_df <- ipums_df %>% left_join(region_table, by = "iso_2")
+rhomis_df <- rhomis_df %>% left_join(region_table, by = "iso_2")
+
+
+
 
 ```
 
-# Why Is Heterogeneity Important? 
 
-<h3>TLDR</h3>
+## Assessing Data Coverage and Completeness
 
-* Different impacts for different locations
-* Targeting is more sought after
-* Maps being produced in the name of targeting
+We are interested in the distribution 
+of farm characteristics at the subnational level. 
+To assess a "distribution", we would need a sufficient
+number of households.
 
 
+``` {r plot_map, eval=F}
+ggplot() +
+  geom_sf(data=world_all, size=0.5) +
+  geom_sf(data=ipums_geo, color="black", size=0.1,aes(fill=iso_3))  +
+  geom_sf(data=rhomis_geo_data, size=0.1) +
+  coord_sf(xlim = c(bounding_box$xmin, bounding_box$xmax), ylim = c(bounding_box$ymin, bounding_box$ymax))
+```
+![](./outputs/r_outputs/exploratory/subnational_boundaries.png)
+```{r, echo=F, fig.align='center'}
+households_per_country <- rhomis_df %>% 
+  filter(!is.na(iso_2)) %>% 
+  group_by(iso_2) %>% 
+  summarise(
+    number_of_households=dplyr::n()
+  )
 
+households_per_country <- households_per_country %>% left_join(region_table, by="iso_2")
 
-## Why Is Heterogeneity Important? 
 
-<div class="container">
+ggplot(households_per_country, aes(x=iso_2, y=number_of_households, fill=region_afr))+
+  geom_bar(stat="identity")+
+  labs(title="Number of RHoMIS Surveys by Country",
+        x ="ISO Country Code", y = "Number RHoMIS Surveys")
 
-<div class="col quote-box">
-<small>"In recent years, many studies have demonstrated the heterogeneity of the smallholder production environment. Yet agronomic research for development (R4D) that aims to identify and test options for increasing productivity has not consistently adapted its approaches to such heterogeneous conditions."
-</small>
 
 
-</div>
 
+areas_in_rhomis <- ipums_df %>% 
+  # Select columns
+  select(c("iso_2", "GEOID_country", "GEO2LABEL")) %>% 
+  # Add a True/False column, whether the GEOID is in RHoMIS
+  mutate(
+    in_rhomis = ipums_df$GEOID_country %in% rhomis_df$GEOID_country,
+    ) %>% 
+  group_by(iso_2) %>% 
+  # Get the country summary of number of areas, and nuber of rhomis areas
+  summarise(
+    number_of_GEO2=dplyr::n(),
+    GEO2_with_rhomis=sum(in_rhomis==T)
+  ) %>% 
+  # Calculate the percentage of areas covered
+mutate(
+  coverage = 100*GEO2_with_rhomis/number_of_GEO2,
+)
 
-<div class="col">
-  ![Rmarkown Header](images/presentation/beyond_averages.png){width=400px}
-</div>
-</div>
 
+areas_in_rhomis <- areas_in_rhomis %>% left_join(region_table, by="iso_2")
 
-<aside class="notes">
 
-* Why to we care about heterogeneity in AR4D
-* This Vanlauwe article talks about, labs, then in field stations. 
-* Some work well, some bad. 
-* Interest in divers
-* Explore diff not bulldoze over.
-* So one of the premises is "we need to do research to better understand why interventions work better in one place than another". Then we can do interesting things like try to predict where they will work well
+ggplot(areas_in_rhomis, aes(x=iso_2, y=coverage, fill=region_afr))+
+  geom_bar(stat="identity")+
+  labs(title="Percentage of GEO2 Areas Containing RHoMIS Surveys",
+        x ="ISO Country Code", y = "Percentage of Areas with RHoMIS Surveys")
 
 
-</aside>
+# knitr::kable(areas_in_rhomis)
 
-## Why is Heterogeneity Important
+# stats_per_area <- rhomis_df %>% 
+#   group_by(iso_2, GEO2LABEL) %>% 
+#   summarise(
+#     households_per_area=dplyr::n()
+#   ) %>% 
+#   group_by(iso_2) %>% 
+#   summarise(
+#     hh_per_geo2_mean=mean(households_per_area),
+#     hh_per_geo2_lq=quantile(households_per_area, 0.25, na.rm=T),
+#     hh_per_geo2_median=quantile(households_per_area, 0.5, na.rm=T),
+#     hh_per_geo2_uq=quantile(households_per_area, 0.75, na.rm=T),
+#     hh_per_geo2_iqr=IQR(households_per_area, 0.75, na.rm=T),
+# 
+#     hh_per_geo2_sd=sd(households_per_area)
+# 
+#   )
 
-<div class="container">
+stats_per_area <- rhomis_df %>% 
+  filter(!is.na(iso_2))%>% 
+  group_by(iso_2, GEO2LABEL) %>% 
+  summarise(
+    households_per_area=dplyr::n()
+  ) 
 
-<div class="col">
-<small>"IFAD’s comparative advantage lies in its targeting of the poorest, the poor and the vulnerable peoples and those who are most likely to have little access to assets and opportunities due to social exclusion and marginalization"
-</small>
+stats_per_area <- stats_per_area %>% left_join(region_table, by="iso_2")
 
-<small><i>Article 5</i></small>
 
+ggplot(stats_per_area, aes(x=iso_2, y=households_per_area, fill=region_afr))+
+  geom_boxplot()+
+  labs(title="Number of RHoMIS Surveys in GEO2 Households",
+        x ="ISO Country Code", y = "Number of Households in Area")
 
-</div>
 
-<div class="col">
-  ![Rmarkown Header](images/presentation/ifpri.png){width=400px}
-</div>
-</div>
+```
 
-<aside class="notes">
 
-* The Vanlauwe article focused on productivity interventions. 
-* A big thing in development is targeting the "poorest of the poor", or those most in need
-* While not explicitly stated, this is a question of capturing farmer heterogeneity.
-* We need to know, who is poor? where are they? What works best for them?
-* There is widespread acknowledgement that differentiation, targetting, and capturing heterogeneity are important
+## Country Selection
 
-</aside>
+Based on the plots above, there are three candidates from the dataset which
+have helpfule characteristics:
 
+1. They have a relatively large number of surveys (n>2000)
+2. They have surveys in a significant portion of their subnational areas (>40%)
 
-## Why do We Care? 
+The three countries are Burkina Faso (West Africa), Rwanda (Central Africa), and Tanzania (East Africa).
 
-<div class="container">
 
-<div class="col">
-<small>"… Member States indicated that they will seek to increase and use high-quality, timely and reliable data disaggregated by sex, age, geography, income, race, ethnicity, migratory status, disability and other characteristics relevant in national contexts"
-</small>
 
-<small><i>General Assembly resolution 69/313</i></small>
 
-<!-- <div class="quote-container"> -->
-<!-- <small class="d-flex justify-content-end">sezdrgfsezrsfd</small> -->
-<!-- </div> -->
+# What Can Land Size Tell Us
 
-</div>
+```{r land_size_1, fig.align='center'}
 
-<div class="col">
-  ![Rmarkown Header](images/presentation/general_assembly.png){width=400px}
-</div>
-</div>
-
-<aside class="notes">
-
-* For example, the UN have stated that member states will need to use more and more disaggregated data to inform their decision making
-* Following the resolution, the UN have set up a group working on small area estimation toolkits to further disaggregate maps and indicators they produce.
-
-</aside>
-
-## We Measure Heterogeneity in Different Ways
-
-
-![Rmarkown Header](images/presentation/systematic_review_heading.png){width=400px}
-![Rmarkown Header](images/presentation/syst_review_table.png){width=600px}
-<aside class="notes">
-
-* We are going to talk about heterogeneity
-* Quality of being diverse in characteristics
-* Not single characterist
-* systematic review looking at heterogeneity
-* In short, heterogeneity in smallholder farms can capture their diverse characteristics at the household level (demographics, farm practices...), as well as higher levels (their environment, their landscape, their county...)
-
-</aside>
-
-
-
-
-## Heterogeneity and Targetting 
-
-<div class="container">
-
-<div class="col quote-box">
-<small>"To target food security interventions for smallholder households, decision makers need large-scale information, such as <strong>maps on poverty, food security and key livelihood activities"</strong>
-</small>
-
-<!-- <div class="quote-container"> -->
-<!-- <small class="d-flex justify-content-end">sezdrgfsezrsfd</small> -->
-<!-- </div> -->
-
-</div>
-
-
-<div class="col">
-  ![Rmarkown Header](images/presentation/wichern_food_security.png){width=400px}
-</div>
-</div>
-
-<aside class="notes">
-
-* This acknowledgement that making sense of heterogeneity can help us make informed decisions and target resources is quite common in research, and we have done it ourselves. 
-* I'll  go through these articles in a second, but it just shows that mapping efforts, clustering... all try to capture the differences between farmers in the name of targetting!
-
-</aside>
-
-
-
-## Heterogeneity and Targetting 
-
-<div class="container">
-
-<div class="col quote-box">
-<small>"...(farm size) estimates help inform agricultural development strategies, although the estimates are limited by the data available."
-</small>
-
-
-</div>
-
-
-<div class="col">
-  ![Rmarkown Header](images/presentation/lowder_farm_size.png){width=400px}
-</div>
-</div>
-
-## Heterogeneity and Targetting 
-
-<div class="container">
-
-<div class="col quote-box">
-<small>"This practice is for the purpose of identifying an agricultural technology or other development intervention which might benefit one type but not another – for the “targeting” of agricultural innovations"
-</small>
-
-
-</div>
-
-
-<div class="col">
-  ![Rmarkown Header](images/presentation/typologies_article.png){width=400px}
-</div>
-</div>
-
-# Methods to Capture Heterogeneity
-
-<h3>TLDR</h3>
-
-Methods currently use often do not currently capture:
-
-* Spatial/Contextual drivers
-* Distribution of responses
-* Uncertainty
-
-<aside class="notes">
-
-* It was confirmed that this was the case during the systematic review
-
-
-</aside>
-
-## Indirect Estimation 
-
-<small>Using two or more known variables to 
-estimate your target</small>
-
-![Rmarkown Header](images/presentation/lowder_farm_size.png){width=400px}
+land_size_df <- rhomis_df %>% 
+  filter(!is.na(iso_2)) 
   
-<div class="flex-container">
-<div class="col">
 
-<h5>Advantages</h5>
+ggplot(land_size_df, aes(x=iso_2, y=land_cultivated_ha, fill=region_afr))+
+  geom_boxplot()+
+    scale_y_continuous(limits = quantile(rhomis_df$land_cultivated_ha, c(0, 0.95), na.rm = T))+
+  labs(title="Land Cultivated (ha) per Country",
+        x ="ISO Country Code", y = "Land Cultivated (ha)")
 
-<small>
-<ul>
-<li> Can produce estimates with large coverage  </li>
-<li> Intuitive </li>
-</ul>
-</small>
-</div>
-<div class="col">
 
-<h5>Disadvantages</h5>
 
-<small>
-<ul>
-<li> Need assumptions about distribution of target </li>
-<li> Limited to known close associations </li>
-<li> Can reinforce existing assumptions when incorrect </li>
-</ul>
-</small>
-</div>
+```
 
-</div>
+Here we see that we have a wide range of land size distributions,
+each of which vary quite significantly by country.
 
-<aside class="notes">
+### Land Size Correlations
 
-* So how do we go about capturing heterogeneity within smallholders
-* Here it is useful to take some of the laguage form smallarea estimation. A field which looks at mapping and disaggregating data
-* The first method we will look at is the indirect estimate. This is where we have two or more known characteristics which are definite, and we use it to infer a third. In the case of the Lowder article, they took the mean arable land and the number of farmers and used this to calculate average farm size.
-* But what are the advantages and disadvantages
+As mentioned, land size could provide important information on
+poverty levels or food security
 
-</aside>
 
-## Household Level Estimates
+```{r land_size_2, fig.align='center'}
 
-<small>Using associations between household and/or
-environmental characteristics to predict
-household level outcomes</small>
+rhomis_no_na <- rhomis_df %>% 
+  filter(!is.na(iso_2)) %>% 
+    filter(!is.na(land_cultivated_ha)) 
 
-![Rmarkown Header](images/presentation/wichern_food_security.png){width=400px}
+
+bin_number <- 10
+land_quartiles <- quantile(rhomis_df$land_cultivated_ha, seq(0,1,1/bin_number), na.rm=T)
+
+x_gt_cond <- land_quartiles[1:(length(land_quartiles)-1)]
+x_ls_cond <- land_quartiles[2:length(land_quartiles)]
+x_quarts <- paste0("q",c(1:bin_number))
+cases <- paste0('land_cultivated_ha >= ', x_gt_cond, ' & land_cultivated_ha < ', x_ls_cond, ' ~ "', x_quarts, '"')
+
+
+rhomis_no_na <- rhomis_df %>% mutate(land_quantiles = dplyr::case_when(!!!rlang::parse_exprs(cases)))
+rhomis_no_na$land_quantiles <- factor(rhomis_no_na$land_quantiles, levels=x_quarts, ordered=T)
+
+
+
+ggplot(rhomis_no_na, aes(x=land_quantiles, y=total_income_ppp_per_year)) +
+  geom_boxplot()+
+  scale_y_continuous(limits = quantile(rhomis_no_na$total_income_ppp_per_year, c(0, 0.8), na.rm = T))
+
+
+
+
+
+
+
+
+```
+
+
+```{r land_size_3, fig.align='center'}
+
+```
+
+
+# Subnational Level Covariates
+
+```{r ipums_cov, fig.align='center'}
+
+
+
+
+
+
+pca_data <- ipums_df[
+      unlist(variable_categories$ipums$economic_subnational_indicators),
+    unlist(variable_categories$ipums$population_columns_percentage),
+    unlist(variable_categories$ipums$employment_columns),
+    unlist(variable_categories$ipums$landscape_variables)
   
-<div class="flex-container">
-<div class="col">
+  ]
 
-<h5>Advantages</h5>
+#chart.Correlation(pca_data, histogram=TRUE, pch=19)
 
-<small>
-<ul>
-<li> Can show drivers when explainable methods are used  </li>
-<li> Can generate estimates with uncertainty </li>
-</ul>
-</small>
-</div>
-<div class="col">
 
-<h5>Disadvantages</h5>
+res.pca <- FactoMineR::PCA(pca_data, ncp=20)
 
-<small>
-<ul>
-<li> Until now, assumptions made about distribution </li>
-<li> Outliers and significant local heterogeneity make it difficult to identify largescale variations </li>
+res.pca$eig
 
-</ul>
-</small>
-</div>
 
-</div>
+fviz_screeplot(res.pca, ncp=20)
+fviz_pca_var(res.pca)
 
-<aside class="notes">
+summary(my_gam)
+gam.check(my_gam)
 
-* In household level, or unit level, estimates.
-* We build a model correlating the characteristic we are interested in, with other data which is more widely available, and has more coverage.
-* For example, we may have association between age, education level and income. We could try to build a regression model and try to predict income in households where we don't have income data, but we do have data on education and income data.
+plot(my_gam)
 
+```
 
-</aside>
 
-## Area Level Estimates
+```{r gam_attempt}
 
-<small>Using associations between spatial indicators to predict
-a statistic for an "area"</small>
+y <- "land_cultivated_ha"
+sep <- "~"
 
-![Rmarkown Header](images/presentation/night_lights.png){width=400px}
-  
-<div class="flex-container">
-<div class="col">
+dep_vars <- paste0(c(
+    unlist(variable_categories$ipums$economic_subnational_indicators),
+    unlist(variable_categories$ipums$population_columns_percentage),
+    unlist(variable_categories$ipums$employment_columns),
+    unlist(variable_categories$ipums$landscape_variables)
+  ), collapse=") + s(")
+dep_vars <- paste0("s(",dep_vars,")")
 
-<h5>Advantages</h5>
+formula <- as.formula(paste0(y, sep, dep_vars, collapse = " "))
 
-<small>
-<ul>
-<li> Can draw on data with large spatial coverage </li>
-</ul>
-</small>
-</div>
-<div class="col">
+my_gam <- mgcv::gam(
+  data=rhomis_df,
+  formula = formula,
+  method="REML")
 
-<h5>Disadvantages</h5>
 
-<small>
-<ul>
-<li> Difficult to validate in applied setting </li>
-<li> Local level heterogeneity often dominates </li>
-<li> Obsession with the mean </li>
-</ul>
-</small>
-</div>
-</div>
 
 
-<aside class="notes">
 
-* Area level estimates.
-* We build a model correlating the characteristic we are interested in, again with other data which is more widely available, and has more coverage.
-* For example, we may have association between the intensity of night lights in a given area (a proxy for electrification), and the poverty levels of that village. We could try to build a regression model and try to predict 
-
-
-</aside>
-
-## Clustering
-
-<small>Identifying typologies by identifying 
-multi-dimensional similarities</small>
-
-![Rmarkown Header](images/presentation/typologies_article.png){width=400px}
-  
-<div class="flex-container">
-<div class="col">
-
-<h5>Advantages</h5>
-
-<small>
-<ul>
-<li> Could be used for intuitive groupings for field work </li>
-<li> Flexible for manageable groupings </li>
-
-</ul>
-</small>
-</div>
-<div class="col">
-
-<h5>Disadvantages</h5>
-
-<small>
-<ul>
-<li> Focuses on single level similarities </li>
-<li> Difficult to transfer </li>
-<li> Interpretation of clusters could be subject to bias </li>
-<li> In heterogeneous environments the "tightness" of the clusters can be questionable </li>
-
-</ul>
-</small>
-</div>
-</div>
-
-
-<aside class="notes">
-
-* This can be useful for categorising groups which have very complex characteristics.
-* For example, you may want to understand how likely a household is to take up a particular intervention based on a 
-* This has almost become a bit of a procedure for targetting, with a range of articles following the same method.
-
-</aside>
-
-## Interpolation
-
-<small>Smoothing between points to 
-"fill in the gaps"</small>
-
-![Rmarkown Header](images/presentation/interpolation.png){width=400px}
-
-
-<div class="flex-container">
-<div class="col">
-
-<h5>Advantages</h5>
-
-<small>
-<ul>
-<li> Intuitive </li>
-<li> Can lead to predictions with large spatial coverage </li>
-<li> Easy to transfer to temporal interpolations </li>
-
-</ul>
-</small>
-</div>
-<div class="col">
-
-<h5>Disadvantages</h5>
-
-<small>
-<ul>
-<li> Cannot deal with stepwise changes </li>
-<li> Large uncertainties with patchy </li>
-<li> No real explanation of the spatial variation </li>
-
-</ul>
-</small>
-</div>
-</div>
-
-
-<aside class="notes">
-
-* Essentially smoothing. Can be useful when you have small gaps in your data, or combined with other methods 
-
-</aside>
-
-# What are we really trying to answer?
-
-
-<div class="flex-container">
-
-<div class="col">
-<h5>Which farmers?</h5>
-<small>
-<ul>
-<li> Demographic groups </li>
-<li> Wealth quartiles </li>
-<li> Practices </li>
-</ul>
-</small>
-</div>
-
-<div class="col">
-<h5>Exist where?</h5>
-<small>
-<ul>
-<li> Villages </li>
-<li> Subnational units </li>
-<li> Agro-ecological zones </li>
-</ul>
-</small>
-</div>
-</div>
-
-To understand this, in the context of the "poorest of the poor", we need to understand at which
-levels variablility is "most important"
-
-
-## Issues with Current Methods
-
-In each of the approaches there are assumptions about:
-
-* At which level heterogeneity is most relevant/dominates
-* Which level of heterogeneity is most useful to policy makers
-* The distribution of outcome variables (mean correlated with need for assistance.)
-
-<aside class="notes">
-
-* Many of these methods presume importance on particular variables (or levels)
-* Almost no differentiation between types of farmers
-
-
-</aside>
-
-# Proposed work
-
-**An exploration of multi-level heterogeneity**
-Some questions to consider:
-
-1. What is the distribution of characteristic X in sub national location Y?
-2. What are the household level drivers of heterogeneity?
-3. What are the spatial drivers of heterogeneity?
-4. Are these drivers the same for all farm types?
-
-Then... if we can demonstrate that there are strong
-spatial drivers, then we can attempt to "fill in the gaps"
-
-## Data
-
-Data from 9 countries
-
-
-<div class="flex-container">
-
-
-<div class="col">
-<small>
-<ul>
-<li>Household level: RHoMIS (Farm practices, incomes, gender information)</li>
-<li>Spatial (Pixel Level): MODIS derived (Climate information, land cover...)</li>
-<li>Sub-national: IPUMS (Education levels, asset ownership, electrification...)</li>
-</ul>
-</small>
-</div>
-
-<div class="col">
-
-![Rmarkown Header](outputs/r_outputs/exploratory/subnational_boundaries.png){width=500px}
-</div>
-</div>
-
-## Data 
-
-![Rmarkown Header](images/presentation/analysis-levels.drawio.png){width=500px}
-
-
-## Suggested Approach: Layering Methods
-
-<div class="flex-container">
-
-<div class="col">
-Quantile Regression
-![Rmarkown Header](images/presentation/quantile_regression.jpeg){width=300px}
-![Rmarkown Header](images/presentation/quantile_reg.png){width=300px}
-</div>
-
-<div class="col">
-Multi-Level Models
-![Rmarkown Header](images/presentation/hierarchical-models.jpeg){width=400px}
-</div>
-
-
-<div class="col">
-Bayesian Methods
-![Rmarkown Header](images/presentation/bayesian_regression.png){width=400px}
-</div>
-</div>
-
-
-## What about Project Bias
-
-
-
-![Rmarkown Header](images/presentation/bootstrapping.jpeg){width=500px}
-
-
-Bootstrapping!
-
-# Summary 
-
-* Mapping farmers could be important for targeting but we need to know what we are targetting
-* To map farmers we need to understand how characteristics vary across different scales
-* Only after we understand which types of heterogeneity dominate, can we begin to think about what what predictions we can make
-
-## Questions
-
-* For linear quantile mixed models, how do we differentiate between quantiles within and overall quantiles
-* Procedures for variable selection?
-
-
-
-
+```

@@ -1,21 +1,34 @@
-library(brms)
-library(rstan)
+# Data Processing Packages
 library(jsonlite)
 library(readr)
 library(dplyr)
 library(tibble)
-library(ggplot2)
+
+# Spatial Packages
 library(sf)
 library(sp)
 library(stars)
-library(FactoMineR)
-library(factoextra)
-library(lme4)
-library(mgcv)
-library(lqmm)
+
+# Plotting Packages
 library(corrplot)
-library(quantreg)
-library(bamlss)
+library(ggplot2)
+
+# Statistical Analysis Pakcages
+library(FactoMineR) # Package for dimensionality reduction
+library(factoextra) # Package for dimensionality reduction
+library(brms) # Bayesian analysis package
+library(rstan) # R package for writing stan models
+library(lme4) # Linear, generalised linear, and nonlinear mixed models
+library(mgcv) # Package for GAMs
+library(lqmm) # Linear Quatile Mixed Models (Hierarchical Quantile)
+library(quantreg) # Quantile Regression
+library(bamlss) # Bayesian Additive Models for Location Scale and Shape
+
+
+
+
+
+
 # Setting the mac Graphics ttype 
 X11(type = "cairo")
 # options(device = "X11")
@@ -93,7 +106,7 @@ ipums_df[population_columns_percentage] <- 100*ipums_df[unlist(variable_categori
 bounding_box <- st_bbox(ipums_geo)
 
 # Plots
-subnational_boundary_plot <- ggplot() +
+subnational_boundary_plot_global <- ggplot() +
   geom_sf(data=world_all, size=0.5) +
   geom_sf(data=ipums_geo, color="black", size=0.1,aes(fill=iso_3))  +
   geom_sf(data=rhomis_geo_data, size=0.1) +
@@ -103,6 +116,75 @@ dir.create("./outputs/r_outputs/exploratory/",showWarnings =F ,recursive = T)
 ggsave("./outputs/r_outputs/exploratory/subnational_boundaries.png", subnational_boundary_plot)
 
 
+# Lets show what a specific subnational area looks like (e.g. burkina)
+burkina_rhomis <- rhomis_geo_data %>% 
+  filter(iso_2=="BF")
+
+burkina_ipums <- ipums_geo %>% 
+  filter(iso_2=="BF")
+
+bounding_box <- st_bbox(burkina_ipums)
+
+subnational_boundary_plot <- ggplot() +
+  geom_sf(data=burkina_ipums, color="black", size=0.1,aes(fill=GEO2LABEL))  +
+  geom_sf(data=burkina_rhomis, size=0.1) +
+  coord_sf(xlim = c(bounding_box$xmin, bounding_box$xmax), ylim = c(bounding_box$ymin, bounding_box$ymax))
+ 
+
+
+
+bounding_box <- st_bbox(burkina_ipums)
+
+subnational_rhomis <- rhomis_geo_data %>% 
+  filter(GEO2LABEL=="Soum")
+
+subnational_ipums <- ipums_geo %>% 
+  filter(GEO2LABEL=="Soum")
+
+bounding_box <- st_bbox(subnational_ipums)
+
+subnational_boundary_plot <- ggplot() +
+  geom_sf(data=subnational_ipums, color="black", size=0.1,aes(fill=GEO2LABEL))  +
+  geom_sf(data=subnational_rhomis, size=1) +
+  coord_sf(xlim = c(bounding_box$xmin, bounding_box$xmax), ylim = c(bounding_box$ymin, bounding_box$ymax))
+
+
+
+
+# Assessing hoe  
+areas_in_rhomis <- ipums_df %>% 
+  # Select columns
+  select(c("iso_2", "GEOID", "GEO2LABEL")) %>% 
+  # Add a True/False column, whether the GEOID is in RHoMIS
+  mutate(
+    in_rhomis = ipums_df$GEOID %in% rhomis_df$GEOID,
+    ) %>% 
+  group_by(iso_2) %>% 
+  # Get the country summary of number of areas, and nuber of rhomis areas
+  summarise(
+    number_of_areas=dplyr::n(),
+    rhomis_areas=sum(in_rhomis==T)
+  ) %>% 
+  # Calculate the percentage of areas covered
+mutate(
+  coverage = 100*rhomis_areas/number_of_areas,
+)
+
+
+ipums_df %>% 
+  group_by(iso_2) %>% 
+  summarise(
+    number_of_areas=dplyr::n(),
+  )
+
+households_per_area <- rhomis_df %>% count(iso_2,GEO2LABEL)
+  
+  
+  group_by(iso_2) 
+  summarise(n=n(GEO2LABEL))
+
+con4<-xtabs(~GEO2LABEL+iso_2, data=rhomis_df)
+
 
 
 # Correlations and Distributions ------------------------------------------------
@@ -110,9 +192,7 @@ ggsave("./outputs/r_outputs/exploratory/subnational_boundaries.png", subnational
 
 
 
-
-
-
+# 
 
 
 
@@ -130,7 +210,7 @@ ipums.pca.res <- FactoMineR::PCA(ipums_df[c(
 
 
 
-# Exploring RHoMIS Land Size Distribtions by are
+# Exploring RHoMIS Land Size Distribtions by area
 
 colnames(rhomis_df)
 
