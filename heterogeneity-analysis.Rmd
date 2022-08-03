@@ -7,13 +7,20 @@ editor_options:
   chunk_output_type: console
 ---
 
-## Primary Questions Are
+This notebook is an exploration of land size distributions
+in household survey data. I begin by assessing the data
+we have available, looking specifically at number of samples,
+spatial coverage and completeness. I then explore the data on 
+land-size. I explain why land size might be an interesting
+variable to explore. Finally I delve into the distributions 
+of land size in different locations.
 
-* Are there differences between locations in mean land size?
-* Is land-size important for determining food security or incomes?
-* How much does land size vary in one single location?
-* Does predicting the mean, or the median actually tell us anything?
-* Can we interactively plot the marginal distribution of land-size, given parameters in a given location?
+## Primary Questions
+
+* Why could land size be an important variable to investigate?
+* People have traditionally mapped mean farm-size, is this helpful?
+* What do land size distributions look like in different locations
+* Can we interactively plot the conditional distribution of land-size, given parameters in a given location?
 * If so, can we combine this with census data to answer the question: _based on the data we have, we think there are N farmers with farm-sizes under X ha, with confidence y_
 * How would we validate such a model?
 
@@ -58,7 +65,6 @@ library(PerformanceAnalytics) # Library for plotting density and correlations
 
 bin_and_quantile <- function(dat, bin_number, column){
   
-  bin_number <- 10
 quantiles <- quantile(dat[column], seq(0,1,1/bin_number), na.rm=T)
 
 x_gt_cond <- quantiles[1:(length(quantiles)-1)]
@@ -113,6 +119,11 @@ variable_categories <- jsonlite::read_json("./data/variable-categorisation.json"
 
 world_all <- readr::read_csv("./data/prepared-data/world-shapefile.csv")
 world_all <- sf::st_as_sf(x = world_all, wkt = "geometry")
+
+# Metadata
+pop_data <- readr::read_csv("./data/pop_variables.csv")
+raster_data <- readr::read_csv("./data/raster_variables.csv")
+
 ```
 
 
@@ -199,8 +210,10 @@ rhomis_df <- rhomis_df %>% left_join(region_table, by = "iso_2")
 
 We are interested in the distribution 
 of farm characteristics at the subnational level. 
-To assess a "distribution", we would need a sufficient
-number of households.
+First we need to check how much data we have in 
+different subnational areas, and whether we potentially 
+have sufficient data per area to plot a distribution.
+
 
 
 ``` {r plot_map,echo=F, eval=F}
@@ -211,7 +224,22 @@ ggplot() +
   coord_sf(xlim = c(bounding_box$xmin, bounding_box$xmax), ylim = c(bounding_box$ymin, bounding_box$ymax))
 ```
 ![](./outputs/r_outputs/exploratory/subnational_boundaries.png)
-```{r, echo=F, fig.align='center'}
+
+For this study, we are interested in areas where we have household survey
+data and external datasets (census, climate, and land coverage).
+There are 9 countries which fulfill these criteria. 
+
+If we look at the number of surveys per country, there are three candidates from 
+the datasets which have helpful characteristics:
+
+1. They have a relatively large number of surveys (n>2000)
+2. They have surveys in a significant portion of their subnational areas (>40%)
+
+The three countries are Burkina Faso (West Africa), Rwanda (Central Africa), and Tanzania (East Africa).
+
+```{r, echo=F, fig.align='center', fig.show="hold", out.width="50%"}
+par(mar = c(4, 4, .1, .1))
+
 households_per_country <- rhomis_df %>% 
   filter(!is.na(iso_2)) %>% 
   group_by(iso_2) %>% 
@@ -295,21 +323,27 @@ ggplot(stats_per_area, aes(x=iso_2, y=households_per_area, fill=region_afr))+
 
 ```
 
-Based on the plots above, there are three candidates from the datasets which
-have helpful characteristics:
 
-1. They have a relatively large number of surveys (n>2000)
-2. They have surveys in a significant portion of their subnational areas (>40%)
 
-The three countries are Burkina Faso (West Africa), Rwanda (Central Africa), and Tanzania (East Africa).
-
-# Land Size
+# Why Land Size
 
 In this study, we are interested in looking 
 at Land Size. Land size is an interesting 
 variable to look at for smallholder farmers. It can tell us a lot about other 
 variables (some of which are more error 
 prone, or more difficult to measure e.g. income and food security).
+
+If we plot land size directly against income and food security, it can be 
+difficult to see the relationship due to outliers and high variation.
+However if we look at quantiles and distributions, we can begin to 
+see that there might be some sort of association. We see that 
+there might be some relationship
+between land size and total income, food security, 
+and livestock holdings.
+
+Interestingly we see that the spread varies for 
+different quantiles. For example, for higher land sizes, we 
+see a larger spread in income values.
 
 
 
@@ -341,20 +375,14 @@ rhomis_no_na$livestock_tlu[rhomis_no_na$livestock_tlu<0] <- NA
 ggplot(rhomis_no_na, aes(x=land_quantiles, y=livestock_tlu)) +
   geom_boxplot()+
   scale_y_continuous(limits = quantile(rhomis_no_na$livestock_tlu, c(0, 0.9), na.rm = T))+
-  labs(title="Food Security Score for 10 Land Size Quantiles",
-        x ="Land Size Quantile", y = "FIES Score")
+  labs(title="Livestock TLU for 10 Land Size Quantiles",
+        x ="Land Size Quantile", y = "Livestock TLU")
 
 ```
 
-Here we see that there might be some relationship
-between land size and total income, food security, 
-and livestock holdings.
 
-Interestingly we see that the spread varies for 
-different quantiles. For example, for higher land sizes, we 
-see a larger spread in income values.
 
-## Spread of Land Sizes
+## Why Map the Spread of Land Sizes
 
 In mapping efforts, we often see researchers trying to map
 averages. For example, in  the 
@@ -384,8 +412,24 @@ ggplot(rhomis_no_na, aes(x=iso_2, y=land_cultivated_ha, fill=region_afr))+
 
 
 
+If we were to use land size to prioritise
+development interventions, it would be important 
+to account for the characteristics of land size 
+distributions.
 
+In the plots below, we can see there appears to be an association between
+average (mean or median) land cultivated, and 
+the spread of land cultivated (sd or IQR). This
+relationship appears to be heteroskedastic. For areas
+with larger average cultivated land, there is also a 
+greater spread (i.e. different households cultivating
+different land sizes).
 
+We also see that for most subnational 
+areas, Land Size distributions are skewed,
+and in many of these areas the distributions
+are fat-tailed (normal distribution has 
+kurtosis of ~ 3).
 
 ```{r land_size_3, fig.align='center', echo=F}
 
@@ -402,7 +446,7 @@ land_size_stats <- rhomis_no_na %>%
     kurtosis_land_cultivated_ha = moments::kurtosis(land_cultivated_ha, na.rm=T)
   )
 
-land_size_stats <- land_size_stats %>% left_join(rhomis_no_na[c("iso_2","GEOID_country","region_afr" )], by="GEOID_country")
+land_size_stats <- land_size_stats %>% left_join(unique(rhomis_no_na[c("iso_2","GEOID_country","region_afr" )]), by="GEOID_country")
 
 
 
@@ -439,30 +483,28 @@ ggplot(land_size_stats, aes(x=kurtosis_land_cultivated_ha))+
 
 ```
 
-If we were to use land size to prioritise
-development interventions, it would be important 
-to account for the characteristics of land size 
-distributions.
 
-Here we see that as the mean land size
-increases increases, so does the standard
-deviation (same goes for the median and IQR). 
 
-We also see that for most subnational 
-areas, Land Size distributions are skewed,
-and in many of these areas the distributions
-are fat-tailed (normal distribution has 
-kurtosis of ~ 3)
-
-What does this mean in practice. Lets 
+What do these distributions this mean in practice. Lets 
 say we are using Land Size to target 
-funding towards the poorest of the poor.
+development interventions towards the poorest of the poor.
 
 We could target interventions based on mean land cultivated.
 i.e, we make the assumption lower mean land cultivated means
 more people with smaller farms. People with smaller farms have lower incomes 
-or food security status. 
+or food security status.
 
+Let us see what this would look like with the data we have. If
+we were to take a threshold value, say we are interested
+in households farming less that 2 hectares. What we would see is that
+the spread can vary quite significantly, depending on the 
+location we are looking at. For example, in areas where the mean land cultivated
+is about 1.8ha, the proportion of households cultivating
+less than 2ha can vary from about 35% to 100%.
+
+In large scale surveys, it is much more difficult to see this type
+of small-scale variation, as often only a few households are sampled
+in these subnational areas. 
 
 
 
@@ -472,6 +514,7 @@ or food security status.
 
 
 mean_vs_threshold <- rhomis_no_na %>% 
+  filter(land_cultivated_ha < quantile(land_cultivated_ha, 0.95, na.rm=T)) %>% 
   group_by(GEOID_country) %>% 
   summarise(
     mean_land_cultivated = mean(land_cultivated_ha, na.rm=T),
@@ -483,51 +526,65 @@ mean_vs_threshold <- rhomis_no_na %>%
     proportion_below_threshold = number_below_2_ha/number_of_hh,
   )
 
-
-# mean_vs_threshold <- mean_vs_threshold %>% dplyr::left_join(rhomis_no_na[c("iso_2","GEOID_country","region_afr" )], by=c("GEOID_country"="GEOID_country"))
-
+mean_vs_threshold <- mean_vs_threshold %>% left_join(unique(rhomis_no_na[c("iso_2","GEOID_country","region_afr" )]), by="GEOID_country")
 
 
- mean_vs_threshold <- bin_and_quantile(mean_vs_threshold,10,"mean_land_cultivated")
+
+
+ mean_vs_threshold <- bin_and_quantile(mean_vs_threshold,5,"mean_land_cultivated")
+ mean_vs_threshold <- mean_vs_threshold %>% rename(mean_land_cultivated_quantiles=quantiles)
+ mean_vs_threshold <- mean_vs_threshold %>% rename(mean_land_cultivated_quantile_center=quantile_center)
+ 
+  mean_vs_threshold <- bin_and_quantile(mean_vs_threshold,5,"proportion_below_threshold")
+ mean_vs_threshold <- mean_vs_threshold %>% rename(proportion_below_threshold_quantiles=quantiles)
+ mean_vs_threshold <- mean_vs_threshold %>% rename(proportion_below_threshold_quantile_center=quantile_center)
 
 mean_vs_threshold <- mean_vs_threshold[complete.cases(mean_vs_threshold),]
 
 
-subset <- mean_vs_threshold[mean_vs_threshold$quantile_center <quantile(mean_vs_threshold$mean_land_caltivated, 0.95, na.rm = T),]
+# subset <- mean_vs_threshold[mean_vs_threshold$mean_land_cultivated_quantile_center <quantile(mean_vs_threshold$mean_land_cultivated, 0.95, na.rm = T),]
+
+
+# ggplot(
+#   subset, 
+#   aes(x=mean_land_cultivated,y=proportion_below_threshold_quantile_center, group=proportion_below_threshold_quantile_center, color=region_afr))+
+#        stat_density_ridges(bandwidth = 1, quantiles = 4) +
+#     geom_point(data=subset, aes(x=mean_land_cultivated, y=proportion_below_threshold))+
+# 
+#    coord_flip() +
+# 
+#   labs(title="Mean Land Cultivated vs Prop of Households with <2ha of Land",
+#          x ="Mean Land Cultivated", y = "Proportion of Households <2ha")
+
+
 ggplot(
-  subset, 
-  aes(x=proportion_below_threshold,y=quantile_center, group=quantile_center))+
-       geom_density_ridges() +
-    geom_point(data=mean_vs_threshold, aes(y=mean_land_caltivated, x=proportion_below_threshold))+
+  mean_vs_threshold, 
+  aes(x=proportion_below_threshold,y=mean_land_cultivated_quantile_center, group=mean_land_cultivated_quantile_center, color=region_afr))+
+        stat_density_ridges(bandwidth = 0.07, 
+                            scale = 0.5, 
+                            size = 0.25, 
+                            rel_min_height = 0.04
+                            ) +
+    geom_point(data=mean_vs_threshold, aes(y=mean_land_cultivated, x=proportion_below_threshold))+
+  geom_smooth(data=mean_vs_threshold, method="lm", aes(y=mean_land_cultivated, x=proportion_below_threshold, group=NULL, color=NULL))+
 
-   coord_flip() 
-     # scale_y_continuous(limits =  c(0, 1))
-  #    scale_x_continuous(limits = quantile(mean_vs_threshold$mean_land_caltivated, c(0, 0.95), na.rm = T))+
-  # labs(title="Mean Land Cultivated vs Prop of Households with <2ha of Land",
-  #        x ="Mean Land Cultivated", y = "Proportion of Households <2ha")
-  # 
+   coord_flip() +
 
-
-
-
-ggplot(mean_vs_threshold, aes(y=mean_land_caltivated, x=proportion_below_threshold, color=region_afr))+
-      # geom_density_ridges(aes(y=proportion_below_threshold)) +
-  geom_point() +
-  geom_smooth(method="lm")+
-
-scale_y_continuous(limits =  c(0, 1))+
-     scale_x_continuous(limits = quantile(mean_vs_threshold$mean_land_caltivated, c(0, 0.95), na.rm = T))+
   labs(title="Mean Land Cultivated vs Prop of Households with <2ha of Land",
-         x ="Mean Land Cultivated", y = "Proportion of Households <2ha")
-
-ggMarginal(plot, type = "boxplot", groupColour = TRUE, groupFill = TRUE)
+         y ="Mean Land Cultivated", x = "Proportion of Households <2ha")
 
 
-ggplot(mean_vs_threshold, aes(x=mean_land_caltivated, y=quantile_0.1, color=region_afr))+
+
+
+
+
+
+
+ggplot(mean_vs_threshold, aes(x=mean_land_cultivated, y=quantile_0.1, color=region_afr))+
   geom_point() +
     geom_smooth(method="lm")+
 # scale_y_continuous(limits =  c(0, 1))+
-     scale_x_continuous(limits = quantile(mean_vs_threshold$mean_land_caltivated, c(0, 0.95), na.rm = T))+
+     scale_x_continuous(limits = quantile(mean_vs_threshold$mean_land_cultivated, c(0, 0.95), na.rm = T))+
   labs(title="Mean Land Cultivated vs Quantile 0.1 (lowest 10%)",
          x ="Mean Land Cultivated", y = "10th Quantile")
 
@@ -535,53 +592,112 @@ ggplot(mean_vs_threshold, aes(x=mean_land_caltivated, y=quantile_0.1, color=regi
 ```
 
 
+## Covariates
 
+It is clear from an initial exploration
+that there is more going on at the subnational
+level than variation in the mean. In this study
+we want to see if we can try to predict this 
+this variation. 
+
+To predict characteristics of subnational 
+heterogneity, we need data at the subnational level. 
+
+For this study we have aggregated census data (GEO2 level),
+climate data, and land-cover information. Here are the variables we have
+
+
+```{r variable_desc, echo=F}
+
+pop_data 
+
+raster_data
+
+```
+
+We don't have all of these variables for all of these 
+subnational levels. So let's see what we do have
+
+``` {r covariate_coverage, echo=F}
+
+ipums_df %>% 
+  filter(GEOID_country %in% rhomis_no_na$GEOID_country ) %>% 
+  group_by(iso_2) %>% 
+  summarise(across(.cols = everything(), ~100*sum(is.na(.))/length(.))) %>% 
+  select_if(function(col) any(col >0)) %>% 
+  rowwise() %>% 
+  select_if(function(row) any(row >0)) 
+
+  
+```
+
+From this assessment of data completeness, it seems that
+covariates are not available in the Nigeria data. There is 
+one region in Kenya where covariates are not available. 
+
+There is missing data on Agricultural Employment in Nigeria,
+Kenya, Burkina Faso, and Ethiopia. Missing data on "telephone"
+in Nigeria, Kenya, and Mali. Missing data on "toilet" in
+Kenya and Nigeria.
+
+
+## Modelling Location Scale and Shape
+
+In distributional models, 
+
+## Notes
+
+This exploration is a step towards developing 
+procedures to map smallholder heterogeneity. I 
+do not want to imply that mapping land size is
+the only thing we need to do for targetting 
+the "poorest of the poor". 
 
 ``` {r skew_normal_example, echo=F}
 
-set.seed(42)
+# set.seed(42)
+# 
+# # xi = location
+# # omega = scale
+# # alpha = shape
+# skew_normal_values <- rsn(n=10000, 
+#                        xi = 2,
+#                        omega=2,
+#                        alpha=5)
+# skew_normal_values<- skew_normal_values[skew_normal_values>0]
+# skew_normal_values <- tibble::as_tibble(list(
+#   values=skew_normal_values
+# ))
+# 
+# normal_values <- rsn(n=10000, 
+#                        xi = 2,
+#                        omega=2,
+#                        alpha=0)
+# normal_values<- normal_values[normal_values>0]
+# normal_values <- tibble::as_tibble(list(
+#   values=normal_values
+# ))
+# 
+# 
+# 
+# ggplot(skew_normal_values,aes(x=values)) +
+#   geom_histogram() +
+#   geom_density()
+# 
+# ggplot(normal_values,aes(x=values)) +
+#   geom_histogram() +
+#   geom_density()
+# 
+# skewed_normal <-  function(
+#       x,
+#       omega,
+#       phi,
+#       location
+#     )
+# 
+# y = (1/(2*pi))*exp()
+# 
 
-# xi = location
-# omega = scale
-# alpha = shape
-skew_normal_values <- rsn(n=10000, 
-                       xi = 2,
-                       omega=2,
-                       alpha=5)
-skew_normal_values<- skew_normal_values[skew_normal_values>0]
-skew_normal_values <- tibble::as_tibble(list(
-  values=skew_normal_values
-))
-
-normal_values <- rsn(n=10000, 
-                       xi = 2,
-                       omega=2,
-                       alpha=0)
-normal_values<- normal_values[normal_values>0]
-normal_values <- tibble::as_tibble(list(
-  values=normal_values
-))
-
-
-
-ggplot(skew_normal_values,aes(x=values)) +
-  geom_histogram() +
-  geom_density()
-
-ggplot(normal_values,aes(x=values)) +
-  geom_histogram() +
-  geom_density()
-
-skewed_normal <-  function(
-      x,
-      omega,
-      phi,
-      location
-    )
-
-y = (1/(2*pi))*exp()
-
-pi
 ```
 
 
