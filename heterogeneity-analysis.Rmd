@@ -45,6 +45,8 @@ library(corrplot)
 library(ggplot2)
 library(ggridges)
 library(ggExtra)
+library(leaflet)
+library(mapview)
 
 # Statistical Analysis Pakcages
 library(FactoMineR) # Package for dimensionality reduction
@@ -58,35 +60,40 @@ library(quantreg) # Quantile Regression
 library(bamlss) # Bayesian Additive Models for Location Scale and Shape
 library(moments) # Package for skewness
 library(sn) # Function for generating data from a skew normal distribution
-
+library(s2)
 library(PerformanceAnalytics) # Library for plotting density and correlations
 
+sf_use_s2(FALSE)
 
+firstup <- function(x) {
+  substr(x, 1, 1) <- toupper(substr(x, 1, 1))
+  x
+}
 
 bin_and_quantile <- function(dat, bin_number, column){
   
-quantiles <- quantile(dat[column], seq(0,1,1/bin_number), na.rm=T)
-
-x_gt_cond <- quantiles[1:(length(quantiles)-1)]
-x_ls_cond <- quantiles[2:length(quantiles)]
-x_quarts <- paste0("q",c(1:bin_number))
-middles <- (x_gt_cond + x_ls_cond)/2
-cases <- paste0(column,' >= ', x_gt_cond, ' &', column ,'< ', x_ls_cond, ' ~ "', x_quarts, '"')
-cases[length(cases)] <- gsub("<", "<=", cases[length(cases)])
-
-
-dat <- dat %>% mutate(quantiles = dplyr::case_when(!!!rlang::parse_exprs(cases)))
-
-conversion_table <- tibble::as_tibble(
-  list(
-  quantile_name = x_quarts,
-  quantile_center = as.numeric(middles)
+  quantiles <- quantile(dat[column], seq(0,1,1/bin_number), na.rm=T)
+  
+  x_gt_cond <- quantiles[1:(length(quantiles)-1)]
+  x_ls_cond <- quantiles[2:length(quantiles)]
+  x_quarts <- paste0("q",c(1:bin_number))
+  middles <- (x_gt_cond + x_ls_cond)/2
+  cases <- paste0(column,' >= ', x_gt_cond, ' &', column ,'< ', x_ls_cond, ' ~ "', x_quarts, '"')
+  cases[length(cases)] <- gsub("<", "<=", cases[length(cases)])
+  
+  
+  dat <- dat %>% mutate(quantiles = dplyr::case_when(!!!rlang::parse_exprs(cases)))
+  
+  conversion_table <- tibble::as_tibble(
+    list(
+      quantile_name = x_quarts,
+      quantile_center = as.numeric(middles)
+    )
   )
-)
-
+  
   dat <- dat %>% left_join(conversion_table, by = c("quantiles"="quantile_name"))
   dat$quantiles <- factor(dat$quantiles, levels=x_quarts, ordered=T)
-
+  
   
   return(dat)
   
@@ -103,13 +110,17 @@ rhomis_df <- readr::read_csv("./data/prepared-data/rhomis-geo-data.csv")
 # Here we create a "geographic copy" of the dataset
 rhomis_geo_data <- sf::st_as_sf(x = rhomis_df, wkt = "geometry")
 rhomis_geo_data <- rhomis_geo_data[rhomis_geo_data$iso_3!="NER",]
+sf::st_crs(rhomis_geo_data) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0" 
+
 
 # IPUMS GEO2 level dataset
 ipums_df <- readr::read_csv("./data/prepared-data/ipums-all.csv")
 ipums_geo <- sf::st_as_sf(x = ipums_df, wkt = "geometry")
 ipums_geo <- ipums_geo[ipums_geo$iso_3!="NER",]
-
-
+sf::st_crs(ipums_geo) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0" 
+ipums_geo$geometry <- ipums_geo$geometry %>% 
+# s2::s2_rebuild() %>%
+  sf::st_simplify(dTolerance = 0.05)
 # lsms_all <- readr::read_csv("./data/prepared-data/lsms-all.csv")
 
 # There are a lot of variables to examine in the dataset, 
@@ -119,12 +130,15 @@ variable_categories <- jsonlite::read_json("./data/variable-categorisation.json"
 
 world_all <- readr::read_csv("./data/prepared-data/world-shapefile.csv")
 world_all <- sf::st_as_sf(x = world_all, wkt = "geometry")
-
 # Metadata
 pop_data <- readr::read_csv("./data/pop_variables.csv")
 raster_data <- readr::read_csv("./data/raster_variables.csv")
 
+
+modis_land_cover <- readr::read_csv("./data/earth-engine/modis_land_cover/land_cover_per_region_ipums.csv")
+
 ```
+
 
 
 ```{r PPP,   echo=F}
@@ -192,8 +206,8 @@ region_table <- tibble::as_tibble(
                    "east_africa",
                    "east_africa"
                    
-                  
-                   )
+                   
+    )
   )
 )
 
@@ -215,15 +229,37 @@ different subnational areas, and whether we potentially
 have sufficient data per area to plot a distribution.
 
 
+``` {r leaflet_map, echo=F, fig.align="center"}
+
+
+
+mapviewOptions(fgb = FALSE) # needed when creating web pages
+# mapview(ipums_geo,fgb = FALSE, basemaps="OpenStreetMap.Mapnik")
+
+map <- mapview(rhomis_geo_data$geometry, alpha=0.5, col.regions="black",color="white", burst=T)+
+ mapview(ipums_geo$geometry, 
+               alpha=1, 
+               color="black", 
+               col.regions = "green", 
+               alpha.regions=0.3, burst=T)
+
+
+
+
+map
+
+
+```
+
 
 ``` {r plot_map,echo=F, eval=F}
-ggplot() +
-  geom_sf(data=world_all, size=0.5) +
-  geom_sf(data=ipums_geo, color="black", size=0.1,aes(fill=iso_3))  +
-  geom_sf(data=rhomis_geo_data, size=0.1) +
-  coord_sf(xlim = c(bounding_box$xmin, bounding_box$xmax), ylim = c(bounding_box$ymin, bounding_box$ymax))
+# ggplot() +
+#   geom_sf(data=world_all, size=0.5) +
+#   geom_sf(data=ipums_geo, color="black", size=0.1,aes(fill=iso_3))  +
+#   geom_sf(data=rhomis_geo_data, size=0.1) +
+#   coord_sf(xlim = c(bounding_box$xmin, bounding_box$xmax), ylim = c(bounding_box$ymin, bounding_box$ymax))
 ```
-![](./outputs/r_outputs/exploratory/subnational_boundaries.png)
+<!-- ![](./outputs/r_outputs/exploratory/subnational_boundaries.png) -->
 
 For this study, we are interested in areas where we have household survey
 data and external datasets (census, climate, and land coverage).
@@ -253,7 +289,7 @@ households_per_country <- households_per_country %>% left_join(region_table, by=
 ggplot(households_per_country, aes(x=iso_2, y=number_of_households, fill=region_afr))+
   geom_bar(stat="identity")+
   labs(title="Number of RHoMIS Surveys by Country",
-        x ="ISO Country Code", y = "Number RHoMIS Surveys")
+       x ="ISO Country Code", y = "Number RHoMIS Surveys")
 
 
 
@@ -264,7 +300,7 @@ areas_in_rhomis <- ipums_df %>%
   # Add a True/False column, whether the GEOID is in RHoMIS
   mutate(
     in_rhomis = ipums_df$GEOID_country %in% rhomis_df$GEOID_country,
-    ) %>% 
+  ) %>% 
   group_by(iso_2) %>% 
   # Get the country summary of number of areas, and nuber of rhomis areas
   summarise(
@@ -272,9 +308,9 @@ areas_in_rhomis <- ipums_df %>%
     GEO2_with_rhomis=sum(in_rhomis==T)
   ) %>% 
   # Calculate the percentage of areas covered
-mutate(
-  coverage = 100*GEO2_with_rhomis/number_of_GEO2,
-)
+  mutate(
+    coverage = 100*GEO2_with_rhomis/number_of_GEO2,
+  )
 
 
 areas_in_rhomis <- areas_in_rhomis %>% left_join(region_table, by="iso_2")
@@ -283,7 +319,7 @@ areas_in_rhomis <- areas_in_rhomis %>% left_join(region_table, by="iso_2")
 ggplot(areas_in_rhomis, aes(x=iso_2, y=coverage, fill=region_afr))+
   geom_bar(stat="identity")+
   labs(title="Percentage of GEO2 Areas Containing RHoMIS Surveys",
-        x ="ISO Country Code", y = "Percentage of Areas with RHoMIS Surveys")
+       x ="ISO Country Code", y = "Percentage of Areas with RHoMIS Surveys")
 
 
 # knitr::kable(areas_in_rhomis)
@@ -318,7 +354,7 @@ stats_per_area <- stats_per_area %>% left_join(region_table, by="iso_2")
 ggplot(stats_per_area, aes(x=iso_2, y=households_per_area, fill=region_afr))+
   geom_boxplot()+
   labs(title="Number of RHoMIS Surveys in GEO2 Households",
-        x ="ISO Country Code", y = "Number of Households in Area")
+       x ="ISO Country Code", y = "Number of Households in Area")
 
 
 ```
@@ -351,7 +387,7 @@ see a larger spread in income values.
 
 rhomis_no_na <- rhomis_df %>% 
   filter(!is.na(iso_2)) %>% 
-    filter(!is.na(land_cultivated_ha)) 
+  filter(!is.na(land_cultivated_ha)) 
 
 rhomis_no_na <- bin_and_quantile(rhomis_no_na, 10, "land_cultivated_ha")
 rhomis_no_na <- rhomis_no_na %>% rename(land_quantiles=quantiles)
@@ -362,13 +398,13 @@ ggplot(rhomis_no_na, aes(x=land_quantiles, y=total_income_ppp_per_year)) +
   geom_boxplot()+
   scale_y_continuous(limits = quantile(rhomis_no_na$total_income_ppp_per_year, c(0, 0.8), na.rm = T))+
   labs(title="Total Income for 10 Land Size Quantiles",
-        x ="Land Size Quantile", y = "Total Household Income (PPP$/Year)")
+       x ="Land Size Quantile", y = "Total Household Income (PPP$/Year)")
 
 ggplot(rhomis_no_na, aes(x=land_quantiles, y=fies_score)) +
   geom_boxplot()+
   scale_y_continuous(limits = quantile(rhomis_no_na$fies_score, c(0, 0.9), na.rm = T))+
   labs(title="Food Security Score for 10 Land Size Quantiles",
-        x ="Land Size Quantile", y = "FIES Score")
+       x ="Land Size Quantile", y = "FIES Score")
 
 
 rhomis_no_na$livestock_tlu[rhomis_no_na$livestock_tlu<0] <- NA
@@ -376,7 +412,7 @@ ggplot(rhomis_no_na, aes(x=land_quantiles, y=livestock_tlu)) +
   geom_boxplot()+
   scale_y_continuous(limits = quantile(rhomis_no_na$livestock_tlu, c(0, 0.9), na.rm = T))+
   labs(title="Livestock TLU for 10 Land Size Quantiles",
-        x ="Land Size Quantile", y = "Livestock TLU")
+       x ="Land Size Quantile", y = "Livestock TLU")
 
 ```
 
@@ -398,13 +434,13 @@ each of which vary quite significantly by country.
 ```{r land_size_2, fig.align='center', echo=F}
 
 
-  
+
 
 ggplot(rhomis_no_na, aes(x=iso_2, y=land_cultivated_ha, fill=region_afr))+
   geom_boxplot()+
-    scale_y_continuous(limits = quantile(rhomis_df$land_cultivated_ha, c(0, 0.95), na.rm = T))+
+  scale_y_continuous(limits = quantile(rhomis_df$land_cultivated_ha, c(0, 0.95), na.rm = T))+
   labs(title="Land Cultivated (ha) per Country",
-        x ="ISO Country Code", y = "Land Cultivated (ha)")
+       x ="ISO Country Code", y = "Land Cultivated (ha)")
 
 
 
@@ -441,7 +477,7 @@ land_size_stats <- rhomis_no_na %>%
     sd_land_cultivated_ha = stats::sd(land_cultivated_ha, na.rm=T),
     median_land_cultivated_ha = median(land_cultivated_ha, na.rm=T),
     iqr_land_cultivated_ha = IQR(land_cultivated_ha, na.rm=T),
-
+    
     skew_land_cultivated_ha = moments::skewness(land_cultivated_ha, na.rm=T),
     kurtosis_land_cultivated_ha = moments::kurtosis(land_cultivated_ha, na.rm=T)
   )
@@ -453,32 +489,32 @@ land_size_stats <- land_size_stats %>% left_join(unique(rhomis_no_na[c("iso_2","
 
 
 ggplot(land_size_stats, aes(x=mean_land_cultivated_ha, y=sd_land_cultivated_ha, color=region_afr))+
-   geom_point()+
-     scale_y_continuous(limits = quantile(land_size_stats$sd_land_cultivated_ha, c(0, 0.95), na.rm = T))+
-        scale_x_continuous(limits = quantile(land_size_stats$mean_land_cultivated_ha, c(0, 0.95), na.rm = T))+
-   labs(title="Mean Land Cultivated vs Std Dev Land Cultivated\nper GEOID (Subnational Level 2)",
-         x ="Mean Land Cultivated (ha)", y = "Std Dev Land Cultivated", color="Country")
+  geom_point()+
+  scale_y_continuous(limits = quantile(land_size_stats$sd_land_cultivated_ha, c(0, 0.95), na.rm = T))+
+  scale_x_continuous(limits = quantile(land_size_stats$mean_land_cultivated_ha, c(0, 0.95), na.rm = T))+
+  labs(title="Mean Land Cultivated vs Std Dev Land Cultivated\nper GEOID (Subnational Level 2)",
+       x ="Mean Land Cultivated (ha)", y = "Std Dev Land Cultivated", color="Country")
 
 
 ggplot(land_size_stats, aes(x=median_land_cultivated_ha, y=iqr_land_cultivated_ha, color=region_afr))+
-   geom_point()+
-     scale_y_continuous(limits = quantile(land_size_stats$iqr_land_cultivated_ha, c(0, 0.95), na.rm = T))+
-        scale_x_continuous(limits = quantile(land_size_stats$median_land_cultivated_ha, c(0, 0.95), na.rm = T))+
-   labs(title="Median Cultivated vs IQR Land Cultivated\nper GEOID (Subnational Level 2)",
-         x ="Median Land Cultivated (ha)", y = "IQR Land Cultivated", color="Country")
- 
- 
+  geom_point()+
+  scale_y_continuous(limits = quantile(land_size_stats$iqr_land_cultivated_ha, c(0, 0.95), na.rm = T))+
+  scale_x_continuous(limits = quantile(land_size_stats$median_land_cultivated_ha, c(0, 0.95), na.rm = T))+
+  labs(title="Median Cultivated vs IQR Land Cultivated\nper GEOID (Subnational Level 2)",
+       x ="Median Land Cultivated (ha)", y = "IQR Land Cultivated", color="Country")
+
+
 ggplot(land_size_stats, aes(x=skew_land_cultivated_ha))+
-   geom_histogram(fill="dodgerblue4", color="black", size=0.5)+
-     scale_x_continuous(limits = quantile(land_size_stats$skew_land_cultivated_ha, c(0, 0.95), na.rm = T))+
-   labs(title="Skewness of Land Cultivated per GEOID",
-         x ="Skewness", y = "Frequency")
+  geom_histogram(fill="dodgerblue4", color="black", size=0.5)+
+  scale_x_continuous(limits = quantile(land_size_stats$skew_land_cultivated_ha, c(0, 0.95), na.rm = T))+
+  labs(title="Skewness of Land Cultivated per GEOID",
+       x ="Skewness", y = "Frequency")
 
 ggplot(land_size_stats, aes(x=kurtosis_land_cultivated_ha))+
-   geom_histogram(fill="dodgerblue4", color="black", size=0.5)+
-     scale_x_continuous(limits = quantile(land_size_stats$kurtosis_land_cultivated_ha, c(0, 0.95), na.rm = T))+
-   labs(title="Kurtosis of Land Cultivated per GEOID",
-         x ="Kurtosis", y = "Frequency")
+  geom_histogram(fill="dodgerblue4", color="black", size=0.5)+
+  scale_x_continuous(limits = quantile(land_size_stats$kurtosis_land_cultivated_ha, c(0, 0.95), na.rm = T))+
+  labs(title="Kurtosis of Land Cultivated per GEOID",
+       x ="Kurtosis", y = "Frequency")
 
 
 ```
@@ -520,7 +556,7 @@ mean_vs_threshold <- rhomis_no_na %>%
     mean_land_cultivated = mean(land_cultivated_ha, na.rm=T),
     number_below_2_ha = sum(land_cultivated_ha<2),
     quantile_0.1 = quantile(land_cultivated_ha,0.1),
-
+    
     number_of_hh = dplyr::n()) %>% 
   mutate(
     proportion_below_threshold = number_below_2_ha/number_of_hh,
@@ -531,13 +567,13 @@ mean_vs_threshold <- mean_vs_threshold %>% left_join(unique(rhomis_no_na[c("iso_
 
 
 
- mean_vs_threshold <- bin_and_quantile(mean_vs_threshold,5,"mean_land_cultivated")
- mean_vs_threshold <- mean_vs_threshold %>% rename(mean_land_cultivated_quantiles=quantiles)
- mean_vs_threshold <- mean_vs_threshold %>% rename(mean_land_cultivated_quantile_center=quantile_center)
- 
-  mean_vs_threshold <- bin_and_quantile(mean_vs_threshold,5,"proportion_below_threshold")
- mean_vs_threshold <- mean_vs_threshold %>% rename(proportion_below_threshold_quantiles=quantiles)
- mean_vs_threshold <- mean_vs_threshold %>% rename(proportion_below_threshold_quantile_center=quantile_center)
+mean_vs_threshold <- bin_and_quantile(mean_vs_threshold,5,"mean_land_cultivated")
+mean_vs_threshold <- mean_vs_threshold %>% rename(mean_land_cultivated_quantiles=quantiles)
+mean_vs_threshold <- mean_vs_threshold %>% rename(mean_land_cultivated_quantile_center=quantile_center)
+
+mean_vs_threshold <- bin_and_quantile(mean_vs_threshold,5,"proportion_below_threshold")
+mean_vs_threshold <- mean_vs_threshold %>% rename(proportion_below_threshold_quantiles=quantiles)
+mean_vs_threshold <- mean_vs_threshold %>% rename(proportion_below_threshold_quantile_center=quantile_center)
 
 mean_vs_threshold <- mean_vs_threshold[complete.cases(mean_vs_threshold),]
 
@@ -560,18 +596,18 @@ mean_vs_threshold <- mean_vs_threshold[complete.cases(mean_vs_threshold),]
 ggplot(
   mean_vs_threshold, 
   aes(x=proportion_below_threshold,y=mean_land_cultivated_quantile_center, group=mean_land_cultivated_quantile_center, color=region_afr))+
-        stat_density_ridges(bandwidth = 0.07, 
-                            scale = 0.5, 
-                            size = 0.25, 
-                            rel_min_height = 0.04
-                            ) +
-    geom_point(data=mean_vs_threshold, aes(y=mean_land_cultivated, x=proportion_below_threshold))+
+  stat_density_ridges(bandwidth = 0.07, 
+                      scale = 0.5, 
+                      size = 0.25, 
+                      rel_min_height = 0.04
+  ) +
+  geom_point(data=mean_vs_threshold, aes(y=mean_land_cultivated, x=proportion_below_threshold))+
   geom_smooth(data=mean_vs_threshold, method="lm", aes(y=mean_land_cultivated, x=proportion_below_threshold, group=NULL, color=NULL))+
-
-   coord_flip() +
-
+  
+  coord_flip() +
+  
   labs(title="Mean Land Cultivated vs Prop of Households with <2ha of Land",
-         y ="Mean Land Cultivated", x = "Proportion of Households <2ha")
+       y ="Mean Land Cultivated", x = "Proportion of Households <2ha")
 
 
 
@@ -582,11 +618,11 @@ ggplot(
 
 ggplot(mean_vs_threshold, aes(x=mean_land_cultivated, y=quantile_0.1, color=region_afr))+
   geom_point() +
-    geom_smooth(method="lm")+
-# scale_y_continuous(limits =  c(0, 1))+
-     scale_x_continuous(limits = quantile(mean_vs_threshold$mean_land_cultivated, c(0, 0.95), na.rm = T))+
+  geom_smooth(method="lm")+
+  # scale_y_continuous(limits =  c(0, 1))+
+  scale_x_continuous(limits = quantile(mean_vs_threshold$mean_land_cultivated, c(0, 0.95), na.rm = T))+
   labs(title="Mean Land Cultivated vs Quantile 0.1 (lowest 10%)",
-         x ="Mean Land Cultivated", y = "10th Quantile")
+       x ="Mean Land Cultivated", y = "10th Quantile")
 
 
 ```
@@ -613,6 +649,8 @@ pop_data
 
 raster_data
 
+
+
 ```
 
 We don't have all of these variables for all of these 
@@ -620,15 +658,16 @@ subnational levels. So let's see what we do have
 
 ``` {r covariate_coverage, echo=F}
 
-ipums_df %>% 
-  filter(GEOID_country %in% rhomis_no_na$GEOID_country ) %>% 
-  group_by(iso_2) %>% 
-  summarise(across(.cols = everything(), ~100*sum(is.na(.))/length(.))) %>% 
-  select_if(function(col) any(col >0)) %>% 
-  rowwise() %>% 
-  select_if(function(row) any(row >0)) 
+ipums_df %>%
+  filter(GEOID_country %in% rhomis_no_na$GEOID_country ) %>%
+  group_by(iso_2) %>%
+  summarise(across(.cols = everything(), ~100*sum(is.na(.))/length(.))) %>%
+  select_if(function(col) any(col >0)) %>%
+  rowwise() %>%
+  select_if(function(row) any(row >0))
 
-  
+
+
 ```
 
 From this assessment of data completeness, it seems that
@@ -639,6 +678,80 @@ There is missing data on Agricultural Employment in Nigeria,
 Kenya, Burkina Faso, and Ethiopia. Missing data on "telephone"
 in Nigeria, Kenya, and Mali. Missing data on "toilet" in
 Kenya and Nigeria.
+
+
+
+``` {r pca_covariates, echo=F,eval=F}
+
+vars <- c("barren",
+          "closed_shrublands",
+          "cropland_natural_vegetation_mosaic",
+          "croplands",
+          "deciduous_broad_leaf",
+          "deciduous_needle_leaf",
+          "evergreen_broad_leaf",
+          "evergreen_needle_leaf",
+          "grass_lands",
+          "mixed_forest",
+          "open_shrublands",
+          "permanent_snow",
+          "savanas",
+          "urban",
+          "water_bodies",
+          "wetlands",
+          "woody_savanas")
+
+# for (var in vars)
+
+
+for (var in vars){
+  
+  
+  var_pretty <- firstup(var)
+  var_pretty <- gsub("_", " ", var_pretty)
+  
+  # summary <- modis_land_cover %>% 
+  #   group_by(iso_2) %>% 
+  #   summarise(
+  #     variable = mean(get(var), na.rm=T)
+  #   )
+  
+  # ggplot(summary, aes(x=iso_2, y=variable))+
+  #   geom_bar(stat="identity") +
+  #   labs(title=paste0(var_pretty, " Pixel Coverage by Country"),
+  #        x ="ISO Country Code", y = paste0("Proportion of ",var_pretty, " Pixels Covered"))
+  
+  plot <- ggplot(modis_land_cover, aes(x=iso_2, y=get(var)))+
+    geom_boxplot() +
+    scale_y_continuous(limits = quantile(modis_land_cover[var], c(0, 0.9), na.rm = T))+  
+    labs(title=paste0(var_pretty, " Pixel Coverage by Country"),
+         x ="ISO Country Code", y = paste0("Proportion of ",var_pretty, " Pixels Covered"))
+  
+  ggsave( paste0("./outputs/earth-engine/", var,"_boxplot.png"),plot)
+}
+
+
+
+
+
+
+pca_data <- modis_land_cover[vars]
+
+chart.Correlation(pca_data, histogram=TRUE, pch=19)
+
+
+ res.pca <- FactoMineR::PCA(pca_data, ncp=20)
+
+ res.pca$eig
+
+
+ fviz_screeplot(res.pca, ncp=20)
+ fviz_pca_var(res.pca)
+
+
+
+```
+
 
 
 ## Modelling Location Scale and Shape
@@ -689,7 +802,7 @@ the "poorest of the poor".
 #   geom_density()
 # 
 # skewed_normal <-  function(
-#       x,
+    #       x,
 #       omega,
 #       phi,
 #       location
@@ -704,7 +817,7 @@ the "poorest of the poor".
 
 # Subnational Level Covariates
 
-```{r ipums_cov, fig.align='center', echo=F}
+```{r ipums_cov, fig.align='center', echo=F, eval=F}
 
 
 
@@ -735,7 +848,7 @@ the "poorest of the poor".
 ```
 
 
-```{r gam_attempt, echo=F}
+```{r gam_attempt, echo=F, eval=F}
 
 
 # fit_zinb2 <- brms::brm(
@@ -748,11 +861,11 @@ sep <- "~"
 
 
 dep_vars <- paste0(c(
-    unlist(variable_categories$ipums$economic_subnational_indicators),
-    unlist(variable_categories$ipums$population_columns_percentage),
-    unlist(variable_categories$ipums$employment_columns),
-    unlist(variable_categories$ipums$landscape_variables)
-  ), collapse=") + s(")
+  unlist(variable_categories$ipums$economic_subnational_indicators),
+  unlist(variable_categories$ipums$population_columns_percentage),
+  unlist(variable_categories$ipums$employment_columns),
+  unlist(variable_categories$ipums$landscape_variables)
+), collapse=") + s(")
 dep_vars <- paste0("s(",dep_vars,")")
 
 formula <- as.formula(paste0(y, sep, dep_vars, collapse = " "))
