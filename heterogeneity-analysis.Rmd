@@ -119,7 +119,7 @@ ipums_geo <- sf::st_as_sf(x = ipums_df, wkt = "geometry")
 ipums_geo <- ipums_geo[ipums_geo$iso_3!="NER",]
 sf::st_crs(ipums_geo) <- "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0" 
 ipums_geo$geometry <- ipums_geo$geometry %>% 
-# s2::s2_rebuild() %>%
+  # s2::s2_rebuild() %>%
   sf::st_simplify(dTolerance = 0.05)
 # lsms_all <- readr::read_csv("./data/prepared-data/lsms-all.csv")
 
@@ -237,11 +237,11 @@ mapviewOptions(fgb = FALSE) # needed when creating web pages
 # mapview(ipums_geo,fgb = FALSE, basemaps="OpenStreetMap.Mapnik")
 
 map <- mapview(rhomis_geo_data$geometry, alpha=0.5, col.regions="black",color="white", burst=T)+
- mapview(ipums_geo$geometry, 
-               alpha=1, 
-               color="black", 
-               col.regions = "green", 
-               alpha.regions=0.3, burst=T)
+  mapview(ipums_geo$geometry, 
+          alpha=1, 
+          color="black", 
+          col.regions = "green", 
+          alpha.regions=0.3, burst=T)
 
 
 
@@ -352,7 +352,7 @@ stats_per_area <- stats_per_area %>% left_join(region_table, by="iso_2")
 
 
 ggplot(stats_per_area, aes(x=iso_2, y=households_per_area, fill=region_afr))+
-  geom_boxplot()+
+  geom_violin(scale="width")+
   labs(title="Number of RHoMIS Surveys in GEO2 Households",
        x ="ISO Country Code", y = "Number of Households in Area")
 
@@ -387,7 +387,10 @@ see a larger spread in income values.
 
 rhomis_no_na <- rhomis_df %>% 
   filter(!is.na(iso_2)) %>% 
-  filter(!is.na(land_cultivated_ha)) 
+  filter(!is.na(land_cultivated_ha)) %>% 
+  filter(total_income_ppp_per_year>=0)
+
+
 
 rhomis_no_na <- bin_and_quantile(rhomis_no_na, 10, "land_cultivated_ha")
 rhomis_no_na <- rhomis_no_na %>% rename(land_quantiles=quantiles)
@@ -395,21 +398,15 @@ rhomis_no_na <- rhomis_no_na %>% rename(land_quantile_centers=quantile_center)
 
 
 ggplot(rhomis_no_na, aes(x=land_quantiles, y=total_income_ppp_per_year)) +
-  geom_boxplot()+
+  geom_violin(scale="width")+  
   scale_y_continuous(limits = quantile(rhomis_no_na$total_income_ppp_per_year, c(0, 0.8), na.rm = T))+
   labs(title="Total Income for 10 Land Size Quantiles",
        x ="Land Size Quantile", y = "Total Household Income (PPP$/Year)")
 
-ggplot(rhomis_no_na, aes(x=land_quantiles, y=fies_score)) +
-  geom_boxplot()+
-  scale_y_continuous(limits = quantile(rhomis_no_na$fies_score, c(0, 0.9), na.rm = T))+
-  labs(title="Food Security Score for 10 Land Size Quantiles",
-       x ="Land Size Quantile", y = "FIES Score")
-
 
 rhomis_no_na$livestock_tlu[rhomis_no_na$livestock_tlu<0] <- NA
 ggplot(rhomis_no_na, aes(x=land_quantiles, y=livestock_tlu)) +
-  geom_boxplot()+
+  geom_violin(scale="width")+
   scale_y_continuous(limits = quantile(rhomis_no_na$livestock_tlu, c(0, 0.9), na.rm = T))+
   labs(title="Livestock TLU for 10 Land Size Quantiles",
        x ="Land Size Quantile", y = "Livestock TLU")
@@ -437,7 +434,7 @@ each of which vary quite significantly by country.
 
 
 ggplot(rhomis_no_na, aes(x=iso_2, y=land_cultivated_ha, fill=region_afr))+
-  geom_boxplot()+
+  geom_violin(scale="width")+
   scale_y_continuous(limits = quantile(rhomis_df$land_cultivated_ha, c(0, 0.95), na.rm = T))+
   labs(title="Land Cultivated (ha) per Country",
        x ="ISO Country Code", y = "Land Cultivated (ha)")
@@ -482,25 +479,29 @@ land_size_stats <- rhomis_no_na %>%
     kurtosis_land_cultivated_ha = moments::kurtosis(land_cultivated_ha, na.rm=T)
   )
 
+land_size_stats$coeff_of_variation <- land_size_stats$sd_land_cultivated_ha/land_size_stats$mean_land_cultivated_ha
+land_size_stats$quartcoeff_of_variation <- land_size_stats$iqr_land_cultivated_ha/land_size_stats$median_land_cultivated_ha
+
+
 land_size_stats <- land_size_stats %>% left_join(unique(rhomis_no_na[c("iso_2","GEOID_country","region_afr" )]), by="GEOID_country")
 
 
 
 
 
-ggplot(land_size_stats, aes(x=mean_land_cultivated_ha, y=sd_land_cultivated_ha, color=region_afr))+
+ggplot(land_size_stats, aes(x=mean_land_cultivated_ha, y=coeff_of_variation, color=region_afr))+
   geom_point()+
-  scale_y_continuous(limits = quantile(land_size_stats$sd_land_cultivated_ha, c(0, 0.95), na.rm = T))+
+  scale_y_continuous(limits = quantile(land_size_stats$coeff_of_variation, c(0, 0.95), na.rm = T))+
   scale_x_continuous(limits = quantile(land_size_stats$mean_land_cultivated_ha, c(0, 0.95), na.rm = T))+
-  labs(title="Mean Land Cultivated vs Std Dev Land Cultivated\nper GEOID (Subnational Level 2)",
+  labs(title="Mean Land Cultivated vs Coefficient of Variation\nper GEOID (Subnational Level 2)",
        x ="Mean Land Cultivated (ha)", y = "Std Dev Land Cultivated", color="Country")
 
 
-ggplot(land_size_stats, aes(x=median_land_cultivated_ha, y=iqr_land_cultivated_ha, color=region_afr))+
+ggplot(land_size_stats, aes(x=median_land_cultivated_ha, y=quartcoeff_of_variation, color=region_afr))+
   geom_point()+
-  scale_y_continuous(limits = quantile(land_size_stats$iqr_land_cultivated_ha, c(0, 0.95), na.rm = T))+
+  scale_y_continuous(limits = quantile(land_size_stats$quartcoeff_of_variation, c(0, 0.95), na.rm = T))+
   scale_x_continuous(limits = quantile(land_size_stats$median_land_cultivated_ha, c(0, 0.95), na.rm = T))+
-  labs(title="Median Cultivated vs IQR Land Cultivated\nper GEOID (Subnational Level 2)",
+  labs(title="Median Cultivated vs Quartile Based Coefficient of Variation \nper GEOID (Subnational Level 2)",
        x ="Median Land Cultivated (ha)", y = "IQR Land Cultivated", color="Country")
 
 
@@ -551,15 +552,15 @@ in these subnational areas.
 
 mean_vs_threshold <- rhomis_no_na %>% 
   filter(land_cultivated_ha < quantile(land_cultivated_ha, 0.95, na.rm=T)) %>% 
+  filter(!is.na(ppp_per_mae)) %>% 
   group_by(GEOID_country) %>% 
   summarise(
     mean_land_cultivated = mean(land_cultivated_ha, na.rm=T),
     number_below_2_ha = sum(land_cultivated_ha<2),
     quantile_0.1 = quantile(land_cultivated_ha,0.1),
-    
     number_of_hh = dplyr::n()) %>% 
   mutate(
-    proportion_below_threshold = number_below_2_ha/number_of_hh,
+    proportion_below_land_threshold = number_below_2_ha/number_of_hh,
   )
 
 mean_vs_threshold <- mean_vs_threshold %>% left_join(unique(rhomis_no_na[c("iso_2","GEOID_country","region_afr" )]), by="GEOID_country")
@@ -571,11 +572,12 @@ mean_vs_threshold <- bin_and_quantile(mean_vs_threshold,5,"mean_land_cultivated"
 mean_vs_threshold <- mean_vs_threshold %>% rename(mean_land_cultivated_quantiles=quantiles)
 mean_vs_threshold <- mean_vs_threshold %>% rename(mean_land_cultivated_quantile_center=quantile_center)
 
-mean_vs_threshold <- bin_and_quantile(mean_vs_threshold,5,"proportion_below_threshold")
+mean_vs_threshold <- bin_and_quantile(mean_vs_threshold,5,"proportion_below_land_threshold")
 mean_vs_threshold <- mean_vs_threshold %>% rename(proportion_below_threshold_quantiles=quantiles)
 mean_vs_threshold <- mean_vs_threshold %>% rename(proportion_below_threshold_quantile_center=quantile_center)
 
 mean_vs_threshold <- mean_vs_threshold[complete.cases(mean_vs_threshold),]
+
 
 
 # subset <- mean_vs_threshold[mean_vs_threshold$mean_land_cultivated_quantile_center <quantile(mean_vs_threshold$mean_land_cultivated, 0.95, na.rm = T),]
@@ -591,23 +593,68 @@ mean_vs_threshold <- mean_vs_threshold[complete.cases(mean_vs_threshold),]
 # 
 #   labs(title="Mean Land Cultivated vs Prop of Households with <2ha of Land",
 #          x ="Mean Land Cultivated", y = "Proportion of Households <2ha")
+# model <- glm(proportion_below_threshold ~mean_land_cultivated,family=binomial(link='logit'),data=mean_vs_threshold)
+# summary(model)
+# 
+# anova(model, test="Chisq")
+
+mean_v_threshold_quantiles <- mean_vs_threshold %>% 
+  group_by(mean_land_cultivated_quantiles) %>% 
+  summarise(max_vulnerable = max(proportion_below_land_threshold),
+            min_vulnerable = min(proportion_below_land_threshold))
+
+mean_v_threshold_quantiles <- mean_v_threshold_quantiles %>% 
+  merge(mean_vs_threshold[c("mean_land_cultivated_quantiles","mean_land_cultivated_quantile_center")], 
+                                    by = "mean_land_cultivated_quantiles", all.x=T, all.y=F)
+mean_v_threshold_quantiles <- mean_v_threshold_quantiles[duplicated(mean_v_threshold_quantiles)==F,]
+
+mean_v_threshold_quantiles$xlow <- mean_v_threshold_quantiles$mean_land_cultivated_quantile_center-0.25
+mean_v_threshold_quantiles$xhigh <- mean_v_threshold_quantiles$mean_land_cultivated_quantile_center+0.25
 
 
 ggplot(
   mean_vs_threshold, 
-  aes(x=proportion_below_threshold,y=mean_land_cultivated_quantile_center, group=mean_land_cultivated_quantile_center, color=region_afr))+
-  stat_density_ridges(bandwidth = 0.07, 
-                      scale = 0.5, 
-                      size = 0.25, 
-                      rel_min_height = 0.04
-  ) +
-  geom_point(data=mean_vs_threshold, aes(y=mean_land_cultivated, x=proportion_below_threshold))+
-  geom_smooth(data=mean_vs_threshold, method="lm", aes(y=mean_land_cultivated, x=proportion_below_threshold, group=NULL, color=NULL))+
-  
-  coord_flip() +
+  aes(x=mean_land_cultivated,y=proportion_below_land_threshold, color=region_afr))+
+  geom_point()+
+  geom_smooth( 
+              method="glm",  
+              method.args = list(family = "binomial"), 
+              se=T,
+              aes(y=proportion_below_land_threshold, x=mean_land_cultivated,group=NULL, color=NULL))+
+   geom_segment(data=mean_v_threshold_quantiles, mapping=aes(x = xlow, y = max_vulnerable, xend = xhigh, yend = max_vulnerable),  inherit.aes = F) +
+  geom_segment(data=mean_v_threshold_quantiles, mapping=aes(x = xlow, y = min_vulnerable, xend = xhigh, yend = min_vulnerable),  inherit.aes = F) +
+   geom_segment(data=mean_v_threshold_quantiles, mapping=aes(x = mean_land_cultivated_quantile_center, y = max_vulnerable, xend = mean_land_cultivated_quantile_center, yend = min_vulnerable),  inherit.aes = F) +
+ 
   
   labs(title="Mean Land Cultivated vs Prop of Households with <2ha of Land",
-       y ="Mean Land Cultivated", x = "Proportion of Households <2ha")
+       x ="Mean Land Cultivated", y = "Proportion of Households <2ha")
+
+
+
+
+
+
+## Density ridges plot
+# ggplot(
+#   mean_vs_threshold, 
+#   aes(x=proportion_below_land_threshold,y=mean_land_cultivated_quantile_center, group=mean_land_cultivated_quantile_center, color=region_afr))+
+#   stat_density_ridges(bandwidth = 0.07, 
+#                       scale = 0.5, 
+#                       size = 0.25, 
+#                       rel_min_height = 0.04
+#   ) +
+#   geom_point(data=mean_vs_threshold, aes(y=mean_land_cultivated, x=proportion_below_land_threshold))+
+#   geom_smooth(data=mean_vs_threshold, 
+#               method="glm",  
+#               method.args = list(family = "binomial"), 
+#               se=F,
+#               aes(y=mean_land_cultivated, x=proportion_below_land_threshold,group=NULL, color=NULL))+
+#  
+#   coord_flip() +
+#   
+#   labs(title="Mean Land Cultivated vs Prop of Households with <2ha of Land",
+#        y ="Mean Land Cultivated", x = "Proportion of Households <2ha")
+# 
 
 
 
@@ -615,19 +662,31 @@ ggplot(
 
 
 
-
-ggplot(mean_vs_threshold, aes(x=mean_land_cultivated, y=quantile_0.1, color=region_afr))+
-  geom_point() +
-  geom_smooth(method="lm")+
-  # scale_y_continuous(limits =  c(0, 1))+
-  scale_x_continuous(limits = quantile(mean_vs_threshold$mean_land_cultivated, c(0, 0.95), na.rm = T))+
-  labs(title="Mean Land Cultivated vs Quantile 0.1 (lowest 10%)",
-       x ="Mean Land Cultivated", y = "10th Quantile")
+# ggplot(mean_vs_threshold, aes(x=mean_land_cultivated, y=quantile_0.1, color=region_afr))+
+#   geom_point() +
+#   geom_smooth(method="lm")+
+#   # scale_y_continuous(limits =  c(0, 1))+
+#   scale_x_continuous(limits = quantile(mean_vs_threshold$mean_land_cultivated, c(0, 0.95), na.rm = T))+
+#   labs(title="Mean Land Cultivated vs Quantile 0.1 (lowest 10%)",
+#        x ="Mean Land Cultivated", y = "10th Quantile")
 
 
 ```
 
+This graph is trying to show the damage that could be done by using the mean
+to estimate the number of vulnerable households. If we take a threshold and say 
+2 ha. This graph shows the proportion of households with less than
+2ha of land, plotted against the mean land cultivated. The black
+range bars represent the maximum and minimum proportions for 5 land
+quantiles (q1, q2, q3, q4, q5). 
 
+At the lowest land quantile (0.64ha), some areas have 100% of households
+with land less than 2ha, other areas have 75% of households with land less than 2ha. 
+
+Now lets take the middle land quantile (q3: 2.23ha). Regions in this quartile have up to 83% of 
+farms with less than 2ha, down to 0% of farm with less than 2ha of land. In area
+like this, using mean farm size, or mean of ay characteristic, is unlikely
+to tell us a lot about the needs of a specific area. 
 ## Covariates
 
 It is clear from an initial exploration
@@ -740,13 +799,13 @@ pca_data <- modis_land_cover[vars]
 chart.Correlation(pca_data, histogram=TRUE, pch=19)
 
 
- res.pca <- FactoMineR::PCA(pca_data, ncp=20)
+res.pca <- FactoMineR::PCA(pca_data, ncp=20)
 
- res.pca$eig
+res.pca$eig
 
 
- fviz_screeplot(res.pca, ncp=20)
- fviz_pca_var(res.pca)
+fviz_screeplot(res.pca, ncp=20)
+fviz_pca_var(res.pca)
 
 
 
