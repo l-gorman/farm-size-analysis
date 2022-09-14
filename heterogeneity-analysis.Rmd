@@ -106,7 +106,6 @@ bin_and_quantile <- function(dat, bin_number, column){
 
 
 rhomis_df <- readr::read_csv("./data/prepared-data/rhomis-geo-data.csv")
-
 # Here we create a "geographic copy" of the dataset
 rhomis_geo_data <- sf::st_as_sf(x = rhomis_df, wkt = "geometry")
 rhomis_geo_data <- rhomis_geo_data[rhomis_geo_data$iso_3!="NER",]
@@ -494,7 +493,7 @@ ggplot(land_size_stats, aes(x=mean_land_cultivated_ha, y=coeff_of_variation, col
   scale_y_continuous(limits = quantile(land_size_stats$coeff_of_variation, c(0, 0.95), na.rm = T))+
   scale_x_continuous(limits = quantile(land_size_stats$mean_land_cultivated_ha, c(0, 0.95), na.rm = T))+
   labs(title="Mean Land Cultivated vs Coefficient of Variation\nper GEOID (Subnational Level 2)",
-       x ="Mean Land Cultivated (ha)", y = "Std Dev Land Cultivated", color="Country")
+       x ="Mean Land Cultivated (ha)", y = "Coefficient of Variation Land Cultivated", color="Country")
 
 
 ggplot(land_size_stats, aes(x=median_land_cultivated_ha, y=quartcoeff_of_variation, color=region_afr))+
@@ -502,7 +501,7 @@ ggplot(land_size_stats, aes(x=median_land_cultivated_ha, y=quartcoeff_of_variati
   scale_y_continuous(limits = quantile(land_size_stats$quartcoeff_of_variation, c(0, 0.95), na.rm = T))+
   scale_x_continuous(limits = quantile(land_size_stats$median_land_cultivated_ha, c(0, 0.95), na.rm = T))+
   labs(title="Median Cultivated vs Quartile Based Coefficient of Variation \nper GEOID (Subnational Level 2)",
-       x ="Median Land Cultivated (ha)", y = "IQR Land Cultivated", color="Country")
+       x ="Median Land Cultivated (ha)", y = "Quartile based Coefficient of Variation Land Cultivated", color="Country")
 
 
 ggplot(land_size_stats, aes(x=skew_land_cultivated_ha))+
@@ -548,11 +547,10 @@ in these subnational areas.
 
 ``` {r mean_vs_threshold, echo=F, fig.align='center'}
 
-
+rhomis_no_na$ppp
 
 mean_vs_threshold <- rhomis_no_na %>% 
   filter(land_cultivated_ha < quantile(land_cultivated_ha, 0.95, na.rm=T)) %>% 
-  filter(!is.na(ppp_per_mae)) %>% 
   group_by(GEOID_country) %>% 
   summarise(
     mean_land_cultivated = mean(land_cultivated_ha, na.rm=T),

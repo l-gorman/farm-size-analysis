@@ -2,9 +2,15 @@
 
 An initial project for exploring potential for a farm size analysis.
 
+The premise of the project is to 
+
+
+* Python package for analysis can be found in the `farmsize` folder.
 * Data was downloaded from IPUMS terra and was prepared using the `./src/clean_ipums_data.py` script.
-* Main EDA occurring in the `explore.ipynb` notebook.
-* Data analysis for quantile regression taking place in `heterogeneity-analysis.Rmd` notebook.
+* Main data preperation and initial EDA occurred in the `explore.ipynb` notebook.
+* Linking to google earth engine occures in `google_earth_engine.ipynb`
+* Data analysis taking place in `heterogeneity-analysis.Rmd` notebook.
+
 
 
 
