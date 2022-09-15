@@ -7,3 +7,4 @@ renv/
 .Rproj.user
 
 markdown-outputs/
+*.DS_Store
