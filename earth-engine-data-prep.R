@@ -111,9 +111,12 @@ land_cover_cat <- read_and_tranform_ee_df( "land-cover-categories-level-2.csv",
 aez_33_classes <- raster("./data/aez/gaez_v4_57_class/33_classes.tif")
 
 aez_57_classes  <- raster("./data/aez/gaez_v4_57_class/57_classes.tif")
-# Recast to original projection
 aez_57_classes <- projectRaster(aez_57_classes,aez_33_classes)
-r_stack <- raster::stack(aez_33_classes,aez_57_classes)
+
+adjusted_length_growing_period  <- raster("./data/aez/gaez_v4_57_class/adjusted_length_growing_period.tif")
+adjusted_length_growing_period <- projectRaster(adjusted_length_growing_period,aez_33_classes)
+
+r_stack <- raster::stack(aez_33_classes,aez_57_classes,adjusted_length_growing_period)
 
 points <- as(rhomis_data$geometry, Class="Spatial")
 rasValue=extract(r_stack, points) %>% tibble::as_tibble()
