@@ -229,7 +229,7 @@ xml_33_list <- xml_33_list[names(xml_33_list)=="Row"]
 
 
 aez_33_class_conversions <- lapply(c(1:length(xml_33_list)), function(index){
-  row <- xml_57_list[index]$Row
+  row <- xml_33_list[index]$Row
   names_of_row <- names(row)
   features <- unlist(as.list(as.character(row[names(row)=="F"])))
   features <- c(features,row$.attrs[["index"]])
@@ -283,7 +283,7 @@ r_stack <- raster::stack(aez_33_classes,aez_57_classes,adjusted_length_growing_p
 
 points <- as(rhomis_data$geometry, Class="Spatial")
 
-rasValue=extract(r_stack, points) %>% tibble::as_tibble()
+rasValue=raster::extract(r_stack, points) %>% tibble::as_tibble()
 
 
 
