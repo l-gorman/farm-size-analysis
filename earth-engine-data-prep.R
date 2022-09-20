@@ -17,6 +17,10 @@
 #' 
 #' https://gaez.fao.org/pages/data-access-download
 #' 
+#' AEZ metadata (for class conversion) found here:
+#' 
+#' https://gaez-data-portal-hqfao.hub.arcgis.com/pages/data-access-download
+#' 
 #' For more information, please see the README of this
 #' repository
 #' 
@@ -27,8 +31,11 @@
 # Data Cleaning and reformatting
 library(readr)
 library(dplyr)
+library(tidyr)
 library(tibble)
 library(jsonlite)
+library(XML)
+library(fastDummies)
 
 # Spatial Packages
 library(sf)
@@ -119,6 +126,50 @@ read_and_tranform_ee_df <- function(file_name,
 }
 
 
+convert_aez_classes <- function(aez_df,
+                                aez_colname, 
+                                aez_conversion_tbl){
+  
+  # aez_df <- rasValue
+  # aez_colname <- "AEZ_Classes_57"
+  # aez_conversion_tbl <- aez_57_class_conversions
+  
+  aez_df$index <- c(1:nrow(aez_df))
+  
+  aez_conversion_tbl$band <- as.integer(aez_conversion_tbl$band)
+  aez_df[[aez_colname]] <- as.integer(aez_df[[aez_colname]])
+  
+
+
+  result <- aez_df %>% merge(aez_conversion_tbl, 
+                             by.x=aez_colname, 
+                             by.y="band",
+                             all.x=T,
+                             all.y=F)
+  
+  result <- result[order(result$index),]
+  
+  result$name <- result$name %>% 
+    tolower() %>% 
+    gsub("/", " or ", .) %>% 
+    gsub(",", "", .) %>% 
+    gsub(";", "", .) %>% 
+    gsub(" ", "_", .) %>% 
+    gsub("-", "_", .) 
+  
+  
+  
+  result <- dummy_cols(result, "name", remove_selected_columns=T)
+  colnames(result) <- colnames(result) %>% 
+    gsub("name_",paste0(aez_colname,"_"),.)
+  
+  aez_df$index <- NULL
+  
+  return(result)
+}
+
+
+
 # -------------------------------------------------------------------------------------------------------------
 # Reading in Data -------------------------------------------------------------------------------------------
 # -------------------------------------------------------------------------------------------------------------
@@ -167,9 +218,63 @@ travel_time_health_data <- read_and_tranform_ee_df("travel-time-to-health-zone-2
 
 # Agro-Eco Zone Data (GAEZ)
 aez_33_classes <- raster("./data/aez/gaez_v4_57_class/33_classes.tif")
+rasterToPoints(aez_33_classes)
+
+
+
+xml_33_list <-  xmlParse('./data/aez/LR/aez/aez_v9v2red_5m_ENSEMBLE_rcp2p6_2020s.tif.aux.xml')
+xml_33_list <- xmlToList(xml_33_list)
+xml_33_list <- xml_33_list$PAMRasterBand$GDALRasterAttributeTable
+xml_33_list <- xml_33_list[names(xml_33_list)=="Row"]
+
+
+aez_33_class_conversions <- lapply(c(1:length(xml_33_list)), function(index){
+  row <- xml_57_list[index]$Row
+  names_of_row <- names(row)
+  features <- unlist(as.list(as.character(row[names(row)=="F"])))
+  features <- c(features,row$.attrs[["index"]])
+  feature_names <- paste0("feature_",c(1:length(features)))
+  
+  
+  row_df <- tibble::as_tibble(list(
+    var=feature_names,
+    value=features
+  )) %>% pivot_wider(names_from = "var")
+  
+  result <- row_df[c("feature_2", "feature_8")]
+  colnames(result) <- c("band", "name")
+  
+  return(result)
+})  %>% dplyr::bind_rows()
+
 
 aez_57_classes  <- raster("./data/aez/gaez_v4_57_class/57_classes.tif")
 aez_57_classes <- projectRaster(aez_57_classes,aez_33_classes)
+
+xml_57_list <-  xmlParse('./data/aez/LR/aez/aez_v9v2_ENSEMBLE_rcp2p6_2020s.tif.aux.xml')
+xml_57_list <- xmlToList(xml_57_list)
+xml_57_list <- xml_57_list$PAMRasterBand$GDALRasterAttributeTable
+xml_57_list <- xml_57_list[names(xml_57_list)=="Row"]
+
+
+aez_57_class_conversions <- lapply(c(1:length(xml_57_list)), function(index){
+  row <- xml_57_list[index]$Row
+  names_of_row <- names(row)
+  features <- unlist(as.list(as.character(row[names(row)=="F"])))
+  features <- c(features,row$.attrs[["index"]])
+  feature_names <- paste0("feature_",c(1:length(features)))
+  
+  
+  row_df <- tibble::as_tibble(list(
+    var=feature_names,
+    value=features
+  )) %>% pivot_wider(names_from = "var")
+ 
+  result <- row_df[c("feature_2", "feature_8")]
+  colnames(result) <- c("band", "name")
+   
+  return(result)
+})  %>% dplyr::bind_rows()
 
 adjusted_length_growing_period  <- raster("./data/aez/gaez_v4_57_class/adjusted_length_growing_period.tif")
 adjusted_length_growing_period <- projectRaster(adjusted_length_growing_period,aez_33_classes)
@@ -179,8 +284,32 @@ r_stack <- raster::stack(aez_33_classes,aez_57_classes,adjusted_length_growing_p
 points <- as(rhomis_data$geometry, Class="Spatial")
 
 rasValue=extract(r_stack, points) %>% tibble::as_tibble()
+
+
+
 colnames(rasValue) <- gsub("X33_classes", "AEZ_Classes_33", colnames(rasValue))
 colnames(rasValue) <- gsub("X57_classes", "AEZ_Classes_57", colnames(rasValue))
+
+rasValue$AEZ_Classes_33 <- as.integer(rasValue$AEZ_Classes_33)
+rasValue$AEZ_Classes_57 <- as.integer(rasValue$AEZ_Classes_57)
+
+rasValue <- convert_aez_classes(rasValue,
+                                      "AEZ_Classes_33",
+                                      aez_33_class_conversions
+                                      )
+
+rasValue <- convert_aez_classes(rasValue,
+                                      "AEZ_Classes_57",
+                                      aez_57_class_conversions
+)
+# colSums(AEZ_classes_57[grep("AEZ_Classes_57_", colnames(AEZ_classes_57))], na.rm = T)
+
+
+
+
+
+
+dummie_aez <- fastDummies::dummy_cols(rasValue,select_columns = c("AEZ_Classes_33","AEZ_Classes_57"))
 
 # World Shapefile (Useful for plotting)
 world_all <- readr::read_csv("./data/prepared-data/world-shapefile.csv")

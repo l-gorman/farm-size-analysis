@@ -475,6 +475,7 @@ land_size_stats <- rhomis_no_na %>%
     iqr_land_cultivated_ha = IQR(land_cultivated_ha, na.rm=T),
     
     skew_land_cultivated_ha = moments::skewness(land_cultivated_ha, na.rm=T),
+    
     kurtosis_land_cultivated_ha = moments::kurtosis(land_cultivated_ha, na.rm=T)
   )
 
