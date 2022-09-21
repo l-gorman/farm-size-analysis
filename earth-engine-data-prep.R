@@ -248,38 +248,39 @@ aez_33_class_conversions <- lapply(c(1:length(xml_33_list)), function(index){
 })  %>% dplyr::bind_rows()
 
 
-aez_57_classes  <- raster("./data/aez/gaez_v4_57_class/57_classes.tif")
-aez_57_classes <- projectRaster(aez_57_classes,aez_33_classes)
+# aez_57_classes  <- raster("./data/aez/gaez_v4_57_class/57_classes.tif")
+# aez_57_classes <- projectRaster(aez_57_classes,aez_33_classes)
 
-xml_57_list <-  xmlParse('./data/aez/LR/aez/aez_v9v2_ENSEMBLE_rcp2p6_2020s.tif.aux.xml')
-xml_57_list <- xmlToList(xml_57_list)
-xml_57_list <- xml_57_list$PAMRasterBand$GDALRasterAttributeTable
-xml_57_list <- xml_57_list[names(xml_57_list)=="Row"]
+# xml_57_list <-  xmlParse('./data/aez/LR/aez/aez_v9v2_ENSEMBLE_rcp2p6_2020s.tif.aux.xml')
+# xml_57_list <- xmlToList(xml_57_list)
+# xml_57_list <- xml_57_list$PAMRasterBand$GDALRasterAttributeTable
+# xml_57_list <- xml_57_list[names(xml_57_list)=="Row"]
 
 
-aez_57_class_conversions <- lapply(c(1:length(xml_57_list)), function(index){
-  row <- xml_57_list[index]$Row
-  names_of_row <- names(row)
-  features <- unlist(as.list(as.character(row[names(row)=="F"])))
-  features <- c(features,row$.attrs[["index"]])
-  feature_names <- paste0("feature_",c(1:length(features)))
-  
-  
-  row_df <- tibble::as_tibble(list(
-    var=feature_names,
-    value=features
-  )) %>% pivot_wider(names_from = "var")
- 
-  result <- row_df[c("feature_2", "feature_8")]
-  colnames(result) <- c("band", "name")
-   
-  return(result)
-})  %>% dplyr::bind_rows()
+# aez_57_class_conversions <- lapply(c(1:length(xml_57_list)), function(index){
+#   row <- xml_57_list[index]$Row
+#   names_of_row <- names(row)
+#   features <- unlist(as.list(as.character(row[names(row)=="F"])))
+#   features <- c(features,row$.attrs[["index"]])
+#   feature_names <- paste0("feature_",c(1:length(features)))
+#   
+#   
+#   row_df <- tibble::as_tibble(list(
+#     var=feature_names,
+#     value=features
+#   )) %>% pivot_wider(names_from = "var")
+#  
+#   result <- row_df[c("feature_2", "feature_8")]
+#   colnames(result) <- c("band", "name")
+#    
+#   return(result)
+# })  %>% dplyr::bind_rows()
 
 adjusted_length_growing_period  <- raster("./data/aez/gaez_v4_57_class/adjusted_length_growing_period.tif")
 adjusted_length_growing_period <- projectRaster(adjusted_length_growing_period,aez_33_classes)
 
-r_stack <- raster::stack(aez_33_classes,aez_57_classes,adjusted_length_growing_period)
+# r_stack <- raster::stack(aez_33_classes,aez_57_classes,adjusted_length_growing_period)
+r_stack <- raster::stack(aez_33_classes,adjusted_length_growing_period)
 
 points <- as(rhomis_data$geometry, Class="Spatial")
 
@@ -288,20 +289,20 @@ rasValue=raster::extract(r_stack, points) %>% tibble::as_tibble()
 
 
 colnames(rasValue) <- gsub("X33_classes", "AEZ_Classes_33", colnames(rasValue))
-colnames(rasValue) <- gsub("X57_classes", "AEZ_Classes_57", colnames(rasValue))
+# colnames(rasValue) <- gsub("X57_classes", "AEZ_Classes_57", colnames(rasValue))
 
 rasValue$AEZ_Classes_33 <- as.integer(rasValue$AEZ_Classes_33)
-rasValue$AEZ_Classes_57 <- as.integer(rasValue$AEZ_Classes_57)
+# rasValue$AEZ_Classes_57 <- as.integer(rasValue$AEZ_Classes_57)
 
 rasValue <- convert_aez_classes(rasValue,
                                       "AEZ_Classes_33",
                                       aez_33_class_conversions
                                       )
 
-rasValue <- convert_aez_classes(rasValue,
-                                      "AEZ_Classes_57",
-                                      aez_57_class_conversions
-)
+# rasValue <- convert_aez_classes(rasValue,
+#                                       "AEZ_Classes_57",
+#                                       aez_57_class_conversions
+# )
 # colSums(AEZ_classes_57[grep("AEZ_Classes_57_", colnames(AEZ_classes_57))], na.rm = T)
 
 
@@ -309,7 +310,7 @@ rasValue <- convert_aez_classes(rasValue,
 
 
 
-dummie_aez <- fastDummies::dummy_cols(rasValue,select_columns = c("AEZ_Classes_33","AEZ_Classes_57"))
+# dummie_aez <- fastDummies::dummy_cols(rasValue,select_columns = c("AEZ_Classes_33","AEZ_Classes_57"))
 
 # World Shapefile (Useful for plotting)
 world_all <- readr::read_csv("./data/prepared-data/world-shapefile.csv")
@@ -384,7 +385,7 @@ joined_df <- joined_df[!is.na(joined_df$ADM0_CODE),]
 
 
 
-columns_to_merge <- c("id_unique",colnames(fao_level_2),"AEZ_Classes_33", "AEZ_Classes_57","adjusted_length_growing_period", "gps_lon", "gps_lat", "geometry")
+columns_to_merge <- c("id_unique",colnames(fao_level_2),colnames(rasValue), "gps_lon", "gps_lat", "geometry")
 ind_data <- readr::read_csv("./data/rhomis-data/indicator_data/indicator_data.csv")
 ind_data <- ind_data[ind_data$id_unique %in% joined_df$id_unique,]
 

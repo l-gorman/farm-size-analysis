@@ -54,10 +54,6 @@ fao_level_2 <- sf::st_as_sf(x = fao_level_2, wkt = "geometry")
 fao_level_2_geo <-st_set_crs(fao_level_2,'EPSG:4326')
 
 fao_level_2 <- tibble::as_tibble(fao_level_2)
-  
-fao_level_2$geo_id <- paste0(fao_level_2$ADM0_CODE, "_", 
-                             fao_level_2$ADM1_CODE, "_",
-                             fao_level_2$ADM2_CODE)
 
 land_categories <-  readr::read_csv("./data/prepared-data/land_cover_classes.csv")
 
@@ -68,7 +64,7 @@ land_categories <-  readr::read_csv("./data/prepared-data/land_cover_classes.csv
 
 #
 indicator_data <- indicator_data[!is.na(indicator_data$land_cultivated_ha),]
-indicator_data <- indicator_data[!is.na(indicator_data$AEZ_Classes_57),]
+indicator_data <- indicator_data[!is.na(indicator_data$AEZ_Classes_33),]
 
 land_cat_columns <- paste0("land_cat_",c(1:17))
 indicator_data[land_cat_columns] <- lapply(indicator_data[land_cat_columns] , function(column){
@@ -91,22 +87,6 @@ new_land_cat_columns <- land_categories$Tag
 colnames(indicator_data)[colnames(indicator_data) %in% land_cat_columns] <- new_land_cat_columns
 colnames(fao_level_2)[colnames(fao_level_2) %in% land_cat_columns] <- new_land_cat_columns
 
-
-
-
-
-# Outlier Detection -------------------------------------------------------
-
-
-outlier_filter <- quantile(indicator_data[["land_cultivated_ha"]], probs = c(0.01,0.99))
-
-table(indicator_data[c("land_cultivated_ha")]==outlier_filter[1]) # 236 with 0 land cult (investigate further)
-table(indicator_data[c("land_cultivated_ha")]>outlier_filter[2]) # 201 with land cult greater than 99th percentile (24th)
-
-
-indicator_data <- indicator_data[indicator_data[c("land_cultivated_ha")] != outlier_filter[1] & indicator_data[c("land_cultivated_ha")] <= outlier_filter[2],]
-
-
 colnames(indicator_data)[colnames(indicator_data) == "accessibility_mean"] <-"healthcare_traveltime"
 colnames(indicator_data)[colnames(indicator_data) == "b1_mean_mean"] <- "nightlights"
 colnames(indicator_data)[colnames(indicator_data) == "population_density_mean_mean"] <- "population_density"
@@ -127,6 +107,27 @@ indicator_data$geo_id <- paste0(indicator_data$ADM0_CODE, "_",
                                 indicator_data$ADM1_CODE, "_",
                                 indicator_data$ADM2_CODE)
 
+fao_level_2$geo_id <- paste0(fao_level_2$ADM0_CODE, "_", 
+                             fao_level_2$ADM1_CODE, "_",
+                             fao_level_2$ADM2_CODE)
+
+
+# Outlier Detection -------------------------------------------------------
+
+
+outlier_filter <- quantile(indicator_data[["land_cultivated_ha"]], probs = c(0.01,0.99))
+
+table(indicator_data[c("land_cultivated_ha")]==outlier_filter[1]) # 236 with 0 land cult (investigate further)
+table(indicator_data[c("land_cultivated_ha")]>outlier_filter[2]) # 201 with land cult greater than 99th percentile (24th)
+
+
+indicator_data <- indicator_data[indicator_data[c("land_cultivated_ha")] != outlier_filter[1] & indicator_data[c("land_cultivated_ha")] <= outlier_filter[2],]
+
+
+
+
+
+
 
 
 
@@ -143,34 +144,36 @@ x <- c("healthcare_traveltime",
        "adjusted_length_growing_period",
        
        
-       "AEZ_Classes_33",
-       "AEZ_Classes_57",
+
        
        
        new_land_cat_columns
 )
 
+aez_33 <- grep("AEZ_Classes_33_", colnames(indicator_data), value=T)
+
+
+
+
 y <-c("land_cultivated_ha")
 
 
-cor(indicator_data[c(x,y)])
+# Looking at subnational indicators vas land cultivated
+cor(indicator_data[c(x,aez_33,y)])
 
-corr_matrix <- round(cor(indicator_data[c(x,y)]),2) %>% tibble::as_tibble()
+corr_matrix <- round(cor(indicator_data[c(x,aez_33,y)]),2) %>% tibble::as_tibble()
 corr_matrix$var <- colnames(corr_matrix)
 corr_matrix <- corr_matrix %>% pivot_longer(cols = colnames(corr_matrix)[colnames(corr_matrix)!="var"])
 
 colnames(corr_matrix) <- c("var1", "var2", "value")
 
-# ggplot(data = corr_matrix, aes(x=var1, y=var2, fill=value)) + 
-#   geom_tile() +
-#   theme_minimal()+ 
-#   theme(axis.text.x = element_text(angle = 90, vjust = 1, 
-#                                     hjust = 1))
 
 land_cult_corr <- corr_matrix[corr_matrix$var1=="land_cultivated_ha", ]
 land_cult_corr <- land_cult_corr[land_cult_corr$var2!="land_cultivated_ha",]
 
-land_cult_corr$var2 <- factor(land_cult_corr$var2, levels=x, ordered = T)
+land_cult_corr$var2 <- gsub("AEZ_Classes_33_", "",land_cult_corr$var2)
+
+land_cult_corr$var2 <- factor(land_cult_corr$var2, levels=c(x,gsub("AEZ_Classes_33_", "",aez_33)), ordered = T)
 land_cult_corr$factor_level <- as.numeric(land_cult_corr$var2)
 
 socio_economic <- c("healthcare_traveltime",
@@ -182,8 +185,7 @@ environmental <- c("elevation",
                    "topographic_diversity",
                    "adjusted_length_growing_period")
 
-aez <-  c("AEZ_Classes_33",
-          "AEZ_Classes_57")
+
 
 land_cat <- new_land_cat_columns
 
@@ -191,80 +193,81 @@ land_cult_corr$var_group <- NA
 land_cult_corr$var_group[land_cult_corr$var2 %in% socio_economic] <- "Socio-Economic"
 land_cult_corr$var_group[land_cult_corr$var2 %in% environmental] <- "Environmental"
 land_cult_corr$var_group[land_cult_corr$var2 %in% land_cat] <- "Land-Cover-Class"
-land_cult_corr$var_group[land_cult_corr$var2 %in% aez] <- "AEZ"
+land_cult_corr$var_group[land_cult_corr$var2 %in% gsub("AEZ_Classes_33_", "",aez_33)] <- "Agro-Eco-Zone"
+
+land_cult_corr$var_group <- factor(land_cult_corr$var_group, 
+                                      levels=c("Agro-Eco-Zone",
+                                               "Land-Cover-Class",
+                                               "Environmental",
+                                               "Socio-Economic"),
+                                      ordered=T, )
+
+land_cult_corr <- land_cult_corr[!is.na(land_cult_corr$value),]
+
+colors <- brewer.pal(length(unique(land_cult_corr$var_group)), name="Dark2")
 
 
+land_cult_corr <- land_cult_corr %>%
+  mutate(., color = with(., case_when(
+    (var_group=="Socio-Economic") ~ colors[4],
+    (var_group=="Environmental")  ~ colors[3],
+    (var_group=="Land-Cover-Class")  ~ colors[2],
+    (var_group=="Agro-Eco-Zone")  ~ colors[1]
+  )))
 
-# min_social <- min(land_cult_corr$factor_level[land_cult_corr$var2 %in% socio_economic]) -0.5
-# max_social <- max(land_cult_corr$factor_level[land_cult_corr$var2 %in% socio_economic]) + 0.5
-# 
-# min_env <- min(land_cult_corr$factor_level[land_cult_corr$var2 %in% environmental]) -0.5
-# max_env <- max(land_cult_corr$factor_level[land_cult_corr$var2 %in% environmental]) + 0.5
-# 
-# min_class <- min(land_cult_corr$factor_level[land_cult_corr$var2 %in% land_cat]) -0.5
-# max_class <- max(land_cult_corr$factor_level[land_cult_corr$var2 %in% land_cat]) + 0.5
 
 ggplot(data = land_cult_corr, aes(y=var2, x=value)) + 
   geom_segment( aes(x=0, xend=value, y=var2, yend=var2), color="black")+
-  geom_point( size=2, aes(x=value, color=var_group)) +
+  geom_point( size=4, aes(x=value, color=var_group)) +
+  scale_color_manual(values=colors) +
+  
   coord_cartesian(xlim = c(-0.3, 0.3), # This focuses the x-axis on the range of interest
-                  # ylim = c(-0.2, length(land_cult_corr$factor_level)),
                   clip = 'off')+
-  # geom_segment( mapping=aes(x=-0.93, xend=-0.93, y=min_social, yend=max_social,)) + 
-  # geom_segment( mapping=aes(x=-0.93, xend=-0.91, y=min_social, yend=min_social)) + 
-  # geom_segment( mapping=aes(x=-0.93, xend=-0.91, y=max_social, yend=max_social)) + 
-  # geom_segment( mapping=aes(x=-0.93, xend=-0.91, y=max_social, yend=max_social)) + 
-  # geom_segment( mapping=aes(x=-0.93, xend=-0.95, y=(max_social + min_social)/2, yend=(max_social + min_social)/2)) +
-  # geom_text(aes(x = -1.02, y = (max_social + min_social)/2, label = "Social")) +
-  # 
-  # geom_segment( mapping=aes(x=-1.1, xend=-1.1, y=min_env, yend=max_env)) + 
-  # geom_segment( mapping=aes(x=-1.1, xend=-1.08, y=min_env, yend=min_env)) + 
-  # geom_segment( mapping=aes(x=-1.1, xend=-1.08, y=max_env, yend=max_env)) + 
-  # geom_segment( mapping=aes(x=-1.1, xend=-1.12, y=(max_env + min_env)/2, yend=(max_env + min_env)/2)) +
-# geom_text(aes(x = -1.27, y = (min_env + max_env)/2, label = "Environmental")) +
-# 
-# 
-# geom_segment( mapping=aes(x=-0.95, xend=-0.95, y=min_class, yend=max_class)) + 
-# geom_segment( mapping=aes(x=-0.95, xend=-0.93, y=min_class, yend=min_class)) + 
-# geom_segment( mapping=aes(x=-0.95, xend=-0.93, y=max_class, yend=max_class)) +
-# geom_segment( mapping=aes(x=-0.95, xend=-0.97, y=(min_class + max_class)/2, yend=(min_class + max_class)/2)) +
-# geom_text(aes(x = -1.11, y = (min_class + max_class)/2, label = "Land Class")) +
-# 
-# theme(
-#   plot.margin = margin( l=70, t =20, b=20, r=20),
-#   
-# ) +
+ 
 labs(title="Correlations with Land Cultivated (ha)",
      x ="Pearsons Correlation Coeff", y ="Landscape predictiors",
      color="Variable Class",
-     caption = "\nLandscape variables sourced from GAEZ v4 and Google Earth Engine.
-     Landscape variables aggregated to FAO GAUL level 2.
+     caption = "\nLandscape predictors sourced from GAEZ v4 and Google Earth Engine.
+     Environmental, land-cover, and socio-economic data aggregated to FAO GAUL level 2.
+     Lenght growing period and AEZ classes extracted at the point level.
+     AEZ simplified 33 class has been used, only 10/33 AEZs featured in the data.
      Correlations represent correlation between household level land cultivated (ha)
      and aggregated landscape variable.
+     Outliers have been removed using 99th percentile (>24ha)*
+     ") +
+   theme(text = element_text(size = 16),
+         axis.text.y = element_text(colour = land_cult_corr$color)
+   )           
+
+
+# Correlation with AEZ classes
+y_index <- which(colnames(indicator_data)==y)
+corr_matrix <- round(cor(indicator_data[c(aez_33,y_index)]),2) %>% tibble::as_tibble()
+corr_matrix$var <- colnames(corr_matrix)
+corr_matrix <- corr_matrix %>% pivot_longer(cols = colnames(corr_matrix)[colnames(corr_matrix)!="var"])
+
+colnames(corr_matrix) <- c("var1", "var2", "value")
+
+
+land_cult_corr <- corr_matrix[corr_matrix$var1=="land_cultivated_ha", ]
+land_cult_corr <- land_cult_corr[land_cult_corr$var2!="land_cultivated_ha",]
+land_cult_corr$var2 <- gsub("AEZ_Classes_33_", "",land_cult_corr$var2)
+land_cult_corr <- land_cult_corr[!is.na(land_cult_corr$var2),]
+land_cult_corr <- land_cult_corr[!is.na(land_cult_corr$value),]
+
+ggplot(data = land_cult_corr, aes(y=var2, x=value)) + 
+  geom_segment( aes(x=0, xend=value, y=var2, yend=var2), color="black")+
+  geom_point( size=2, aes(x=value), color="Orange") +
+  coord_cartesian(xlim = c(-0.3, 0.3), # This focuses the x-axis on the range of interest
+                  clip = 'off')+
+  
+  labs(title="Correlations with Land Cultivated (ha)",
+       x ="Pearsons Correlation Coeff", y ="Agro-Ecological Zone",
+
+       caption = "\nAEZ zones sourced from GAEZ v4 (simplified 33 class).
+     Households in the dataset covered 10 out of the 33 zones.
      **Outliers have been removed using 99th percentile (>24ha)
      ") 
-
-
-
-
-
-# head(corr_matrix)
-# 
-# melted_cormat <- melt(cormat)
-# tidyr::pivot_longer(corr_matrix)
-
-# pairs(indicator_data[c(x,y)])
-
-# ggpairs(indicator_data[c(
-#   y,
-#   "population_density_mean_mean",
-#   "accessibility_mean",
-#   "b1_mean_mean"
-# )])
-# 
-# ggpairs(indicator_data[c(x,y)]) 
-
-
 
 # Looking at Land Cult Stats ----------------------------------------------
 
@@ -331,7 +334,6 @@ ggplot(data = corr_matrix, aes(x=var2, y=var1, fill=value)) +
 FactoMineR::PCA(fao_level_2_land_cult[x_subn], scale.unit=TRUE, ncp=5, graph=T)
 
 table(indicator_data$AEZ_Classes_33)
-table(indicator_data$AEZ_Classes_57)
 
 # Plotting Distributions --------------------------------------------------
 
