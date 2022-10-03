@@ -232,11 +232,14 @@ will be modeled using a model which factors for location, scale and shape. We ge
 data from these equations:
 
 $$
-y_i\;{\sim}\;\mathcal{f}(\mu_i, \sigma_i, \nu_i, \tau_i)
+y_i\;{\sim}\;\mathcal{f}(\mu_i, \sigma_i, \nu_i)
 $$
 Where $$\mu_i$$ is the location parameter (e.g. mean), $$\sigma_i$$ is the 
-scale parameter (e.g. standard deviation), and $$\nu_i$$ and $$\tau_i$$ are shape
-parameters ($$\nu_i$$ generally representing skew, and $$\tau_i$$ representing kurtosis)
+scale parameter (e.g. standard deviation), and $$\nu_i$$ is the shape
+parameter ($$\nu_i$$ generally representing skew, sometimes an extra shape 
+parameter $$\tau_i$$ is modelled,representing kurtosis). Here are the 
+equations we are using to model our data:
+
 $$
 \mu_i=\beta^{\mu}X^{\mu}_i
 $$
@@ -247,34 +250,167 @@ $$
 \log(\sigma_i)=\beta^{\sigma}X^{\sigma}_i
 $$
 $$
-\log(\nu_i)=\beta^{\nu}X^{\nu}_i
+\nu_i=\beta^{\nu}X^{\nu}_i
 $$
-$$
-\log(\tau_i)=\beta^{\tau}X^{\tau}_i
-$$
+
 
 
 
 ```{r, message=FALSE, warning=FALSE}
-N <- 100
+N <- 200
 X <- cbind(1, runif(N, 0, 100)) # Generate N uniform random numbers between 0-100
 
 B_mu <- c(10, 0.2)
-B_sigma <- c(0, 0.022)
+B_sigma <- c(0.1, 0.02)
+B_nu <- c(2, 0.5)
 
 mu <- X %*% B_mu # Matrix Multiplication
 sigma <- exp(X %*% B_sigma)
-
-y <- rnorm(N, mu, sigma)
-
-
-rSN1(N, mu = 0, sigma = 1, nu = 0)
+nu <- X %*% B_nu
 
 
-skew_normal(link = "identity", link_sigma = "log", link_alpha = "identity",)
+
+y <- rSN1(n=N, mu = mu, sigma = sigma, nu = nu)
+
+
+# skew_normal(link = "identity", link_sigma = "log", link_alpha = "identity")
 
 ```
 
+```{r, warning=F, message=F}
+ggplot() +
+  geom_point(aes(x = X[,2], y = y), shape=3) + 
+  scale_x_continuous(expand=c(0,0)) +
+  scale_y_continuous(expand=c(0,0)) +
+  labs(y=NULL, x = NULL)
+
+```
+
+
+### Simple Regression
+
+```{r, warning=FALSE,message=FALSE,  results='hide'}
+sim_data <- data.frame(y, X)
+
+# Set up brms model
+conv_fm <- bf(
+  y ~ X2
+)
+conv_brm <- brm(conv_fm, data = sim_data)
+
+```
+```{r, warning=F, message=F}
+pred_df <- data.frame(X2 = seq(0, 100))
+
+conv_post_pred <- cbind(pred_df, predict(conv_brm, newdata = pred_df))
+head(conv_post_pred)
+
+
+ggplot() +
+  geom_point(data=sim_data, aes(y=y, x=X2, shape="Data Point"))+
+  scale_shape_manual("",values=c(16))+
+  
+  geom_ribbon(data=conv_post_pred,aes(x=X2, ymin=Q2.5, ymax=Q97.5,fill = "Confidence Interval"), alpha=0.5)+
+  scale_fill_manual("",values="grey12") +
+  
+  geom_line(data=conv_post_pred,aes(x=X2, y=Estimate, color="Estimate"))+
+  scale_colour_manual(c("",""),values=c("black","black"))
+```
+
+### Varying Variance 
+
+### Distribitional Model
+
+```{r, message=FALSE, warning=FALSE, results='hide'}
+dist_fm <- bf(
+  y ~ X2,
+  sigma ~ X2
+)
+dist_brm <- brm(dist_fm, data = sim_data)
+```
+
+```{r}
+print(dist_brm)
+```
+
+#### Posterior Predictive Checks
+
+```{r, message=FALSE, warning=FALSE}
+dist_post_pred <- cbind(pred_df, predict(dist_brm, newdata = pred_df))
+head(dist_post_pred)
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+dist_post_pred <- cbind(pred_df, predict(dist_brm, newdata = pred_df))
+head(dist_post_pred)
+
+
+ggplot() +
+  geom_point(data=sim_data, aes(y=y, x=X2, shape="Data Point"))+
+  scale_shape_manual("",values=c(16))+
+  
+  geom_ribbon(data=dist_post_pred,aes(x=X2, ymin=Q2.5, ymax=Q97.5,fill = "Confidence Interval"), alpha=0.5)+
+  scale_fill_manual("",values="grey12") +
+  
+  geom_line(data=dist_post_pred,aes(x=X2, y=Estimate, color="Estimate"))+
+  scale_colour_manual(c("",""),values=c("black","black"))
+
+
+```
+
+### Location, Scale and Shape Model
+
+```{r, message=FALSE, warning=FALSE, results='hide'}
+lss_fm <- bf(
+  y ~ X2,
+  sigma ~ X2,
+  alpha ~ X2
+)
+# lss_fm <- bf(
+#   y ~ X2,
+#   sigma ~ X2)
+# lss_brm <- brm(lss_fm, data = sim_data, family = gaussian())
+
+lss_brm <- brm(lss_fm, 
+               data = sim_data, 
+               family = skew_normal(), 
+               chains = 4,
+               control=list(adapt_delta = 0.95))
+
+```
+
+```{r}
+print(lss_brm)
+```
+
+#### Posterior Predictive Checks
+
+```{r, message=FALSE, warning=FALSE}
+lss_post_pred <- cbind(pred_df, predict(lss_brm, newdata = pred_df))
+head(lss_post_pred)
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+lss_post_pred <- cbind(pred_df, predict(lss_brm, newdata = pred_df))
+head(lss_post_pred)
+
+
+ggplot() +
+  geom_point(data=sim_data, aes(y=y, x=X2, shape="Data Point"))+
+  scale_shape_manual("",values=c(16))+
+  
+  geom_ribbon(data=lss_post_pred,aes(x=X2, ymin=Q2.5, ymax=Q97.5,fill = "Confidence Interval"), alpha=0.5)+
+  scale_fill_manual("",values="grey12") +
+  
+  geom_line(data=lss_post_pred,aes(x=X2, y=Estimate, color="Estimate"))+
+  scale_colour_manual(c("",""),values=c("black","black"))
+
+
+```
 
 ## Quantile
 
@@ -284,3 +420,4 @@ skew_normal(link = "identity", link_sigma = "log", link_alpha = "identity",)
 * [Tidy Bayes](http://mjskay.github.io/tidybayes/articles/tidy-brms.html)
 * [brms families](https://cran.r-project.org/web/packages/brms/vignettes/brms_families.html)
 * Doing bayesian analysis in BRMS, see [here](https://bookdown.org/content/3686/)
+* What to do for [divergence](https://mc-stan.org/misc/warnings.html#divergent-transitions-after-warmup)
