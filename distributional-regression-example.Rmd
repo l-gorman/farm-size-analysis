@@ -1,0 +1,286 @@
+---
+title: "Distributional Regression and Quantile Regression Examples"
+output:
+  html_document:
+    df_print: paged
+---
+
+Following [example](https://www.tmwolock.com/index.php/2020/12/18/distributional-regression-models-brms-tutorial/) from Tim Wolock, accompanying paper [here](https://elifesciences.org/articles/68318.pdf). Other useful resources are this [vignette](https://cran.r-project.org/web/packages/brms/vignettes/brms_distreg.html) from Paul Burkner, and the accompanying [paper](https://arxiv.org/pdf/1705.11123.pdf)
+
+The procedure will be:
+
+* Generate data from a model
+* Compare range of models on the data (e.g. normal with varying variance, box-cox-t (BCT), quantile, gam)
+* Compare the fits.
+
+Generate more and more complex data, then compare again
+
+## Notes
+
+* Student-T distribution uses a "centile-based" measure of location?
+* Can compare the power of quantile, 
+
+## Setup  
+
+```{r, warning=F, message=F}
+library(brms) 
+library(quantreg)
+library(ggplot2)
+library(tidyr)
+library(sn)
+library(gamlss)
+library(gamlss.dist)
+
+set.seed(404)
+
+```
+
+## Heteroskedastic Normal Model
+
+### Generating data
+
+We are testing data generated from a process
+where the mean (location) and variance (scale)
+are allowed to vary as a function of some predictors
+(X), ie:
+
+$$
+y_i\;{\sim}\;\mathcal{N}(\mu_i, \sigma_i)
+$$
+$$
+\mu_i=\beta^{\mu}X^{\mu}_i
+$$
+$$
+\log(\sigma_i)=\beta^{\sigma}X^{\sigma}_i
+$$
+
+In words these equations mean that $y_i$, our target variable is, is normally distributed with mean $\mu_i$
+and variance $\sigma_i$. $sigma_i$ can be modelled as a linear combination of predictor 
+variables $X_i^\mu$, with coefficients $\beta^\mu$. Finally $\sigma_i$ can be modelled as
+the exponential linear combination of predictors $X^{\sigma}_i$, and coefficients $\beta^{\sigma}$
+($e^{\beta^{\sigma}X^{\sigma}_i}$).
+
+```{r}
+N <- 100
+X <- cbind(1, runif(N, 0, 100)) # Generate N uniform random numbers between 0-100
+
+B_mu <- c(10, 0.2)
+B_sigma <- c(0, 0.022)
+
+mu <- X %*% B_mu # Matrix Multiplication
+sigma <- exp(X %*% B_sigma)
+
+y <- rnorm(N, mu, sigma)
+```
+
+
+```{r, warning=F, message=F}
+ggplot() +
+  geom_point(aes(x = X[,2], y = y), shape=3) + 
+  scale_x_continuous(expand=c(0,0)) +
+  scale_y_continuous(expand=c(0,0)) +
+  labs(y=NULL, x = NULL)
+
+```
+
+
+##e Simple Linear Regression
+
+First we model it using a simple linear
+regression. For the simple linear regression 
+model we have:
+
+$$
+y_i\;{\sim}\;\mathcal{N}(\mu_i, \sigma)
+$$
+$$
+\mu_i=\beta^{\mu}X^{\mu}_i
+$$
+In this case, we see that $$\sigma$$ is not allowed to vary. We know this is not
+the case, but it is useful do this for the sake of comparing models.
+
+```{r, warning=FALSE,message=FALSE,  results='hide'}
+sim_data <- data.frame(y, X)
+
+# Set up brms model
+conv_fm <- bf(
+  y ~ X2
+)
+conv_brm <- brm(conv_fm, data = sim_data)
+
+```
+```{r}
+print(conv_brm)
+```
+
+
+
+#### Posterior predictive checks
+
+We check what the model looks like against the data. 
+
+```{r, message=FALSE, warning=FALSE}
+pred_df <- data.frame(X2 = seq(0, 100))
+
+conv_post_pred <- cbind(pred_df, predict(conv_brm, newdata = pred_df))
+head(conv_post_pred)
+
+
+ggplot() +
+  geom_point(data=sim_data, aes(y=y, x=X2, shape="Data Point"))+
+  scale_shape_manual("",values=c(16))+
+  
+  geom_ribbon(data=conv_post_pred,aes(x=X2, ymin=Q2.5, ymax=Q97.5,fill = "Confidence Interval"), alpha=0.5)+
+  scale_fill_manual("",values="grey12") +
+  
+  geom_line(data=conv_post_pred,aes(x=X2, y=Estimate, color="Estimate"))+
+  scale_colour_manual(c("",""),values=c("black","black"))
+
+```
+As we can see here, it looks like the 
+### Distribitional Model
+
+```{r, message=FALSE, warning=FALSE, results='hide'}
+dist_fm <- bf(
+  y ~ X2,
+  sigma ~ X2
+)
+dist_brm <- brm(dist_fm, data = sim_data)
+```
+
+```{r}
+print(dist_brm)
+```
+
+#### Posterior Predictive Checks
+
+```{r, message=FALSE, warning=FALSE}
+dist_post_pred <- cbind(pred_df, predict(dist_brm, newdata = pred_df))
+head(dist_post_pred)
+```
+```{r, message=FALSE, warning=FALSE}
+
+dist_post_pred <- cbind(pred_df, predict(dist_brm, newdata = pred_df))
+head(dist_post_pred)
+
+
+ggplot() +
+  geom_point(data=sim_data, aes(y=y, x=X2, shape="Data Point"))+
+  scale_shape_manual("",values=c(16))+
+  
+  geom_ribbon(data=dist_post_pred,aes(x=X2, ymin=Q2.5, ymax=Q97.5,fill = "Confidence Interval"), alpha=0.5)+
+  scale_fill_manual("",values="grey12") +
+  
+  geom_line(data=dist_post_pred,aes(x=X2, y=Estimate, color="Estimate"))+
+  scale_colour_manual(c("",""),values=c("black","black"))
+
+
+```
+
+### Model Comparison (Against TRUE)
+
+```{r, message=F, warning=F}
+
+conv_fixef <- data.frame(fixef(conv_brm))
+conv_fixef$variable <- rownames(fixef(conv_brm))
+tmp_sigma <- data.frame(log(t(summary(conv_brm)$spec_pars[1:4])),variable = 'sigma_Intercept')
+tmp_sigma$names <- colnames(conv_fixef)[c(1:4)] 
+tmp_sigma <- tmp_sigma %>% 
+  tidyr::pivot_wider(
+                     id_cols = variable,
+                     names_from = names, 
+                     values_from = sigma,
+                     id_expand = F)
+conv_fixef <- rbind(conv_fixef, tmp_sigma)
+conv_fixef$Model <- 'Conventional'
+ 
+dist_fixef <- data.frame(fixef(dist_brm))
+dist_fixef$variable <- rownames(fixef(dist_brm))
+dist_fixef$Model <- 'Distributional'
+ 
+true_fixef <- data.frame(
+  variable = c('mu_Intercept', 'mu_X2', 'sigma_Intercept', 'sigma_X2'),
+  value = c(B_mu, B_sigma)
+)
+ 
+all_fixef <- rbind(conv_fixef, dist_fixef)
+ 
+all_fixef$variable[all_fixef$variable == 'Intercept'] <- 'mu_Intercept'
+all_fixef$variable[all_fixef$variable == 'X2'] <- 'mu_X2'
+ggplot() +
+  geom_crossbar(data = all_fixef, aes(x=Model, y = Estimate, ymin = Q2.5, ymax=Q97.5),
+                width=0.2, fill='darkcyan', color='darkcyan', alpha=0.7) +
+  geom_hline(data = true_fixef, aes(yintercept=value)) +
+  facet_wrap('variable', scales='free_y') +
+  labs(y = NULL)
+```
+
+## Model Comparison (LOO)
+
+
+```{r, warning=F, message=F}
+loo_res <- brms::loo(conv_brm, dist_brm)
+loo_comparison <- loo_res$diffs
+
+print(loo_res)
+```
+
+## Skewed Normal Distribution
+
+This time we will go through the same process, except our data
+will be modeled using a model which factors for location, scale and shape. We generate
+data from these equations:
+
+$$
+y_i\;{\sim}\;\mathcal{f}(\mu_i, \sigma_i, \nu_i, \tau_i)
+$$
+Where $$\mu_i$$ is the location parameter (e.g. mean), $$\sigma_i$$ is the 
+scale parameter (e.g. standard deviation), and $$\nu_i$$ and $$\tau_i$$ are shape
+parameters ($$\nu_i$$ generally representing skew, and $$\tau_i$$ representing kurtosis)
+$$
+\mu_i=\beta^{\mu}X^{\mu}_i
+$$
+$$
+\log(\sigma_i)=\beta^{\sigma}X^{\sigma}_i
+$$
+$$
+\log(\sigma_i)=\beta^{\sigma}X^{\sigma}_i
+$$
+$$
+\log(\nu_i)=\beta^{\nu}X^{\nu}_i
+$$
+$$
+\log(\tau_i)=\beta^{\tau}X^{\tau}_i
+$$
+
+
+
+```{r, message=FALSE, warning=FALSE}
+N <- 100
+X <- cbind(1, runif(N, 0, 100)) # Generate N uniform random numbers between 0-100
+
+B_mu <- c(10, 0.2)
+B_sigma <- c(0, 0.022)
+
+mu <- X %*% B_mu # Matrix Multiplication
+sigma <- exp(X %*% B_sigma)
+
+y <- rnorm(N, mu, sigma)
+
+
+rSN1(N, mu = 0, sigma = 1, nu = 0)
+
+
+skew_normal(link = "identity", link_sigma = "log", link_alpha = "identity",)
+
+```
+
+
+## Quantile
+
+
+## Other Useful Resources
+
+* [Tidy Bayes](http://mjskay.github.io/tidybayes/articles/tidy-brms.html)
+* [brms families](https://cran.r-project.org/web/packages/brms/vignettes/brms_families.html)
+* Doing bayesian analysis in BRMS, see [here](https://bookdown.org/content/3686/)
